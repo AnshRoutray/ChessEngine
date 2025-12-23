@@ -1,0 +1,351 @@
+#include <cstdint>
+#include <immintrin.h>
+
+constexpr uint64_t FILE[8] = {
+    0x0101010101010101ULL, // FILE[0] = File A
+    0x0202020202020202ULL, // FILE[1] = File B
+    0x0404040404040404ULL, // FILE[2] = File C
+    0x0808080808080808ULL, // FILE[3] = File D
+    0x1010101010101010ULL, // FILE[4] = File E
+    0x2020202020202020ULL, // FILE[5] = File F
+    0x4040404040404040ULL, // FILE[6] = File G
+    0x8080808080808080ULL  // FILE[7] = File H
+};
+
+constexpr uint64_t RANK[8] = {
+    0x00000000000000FFULL, // RANK[0] = Rank 1
+    0x000000000000FF00ULL, // RANK[1] = Rank 2
+    0x0000000000FF0000ULL, // RANK[2] = Rank 3
+    0x00000000FF000000ULL, // RANK[3] = Rank 4
+    0x000000FF00000000ULL, // RANK[4] = Rank 5
+    0x0000FF0000000000ULL, // RANK[5] = Rank 6
+    0x00FF000000000000ULL, // RANK[6] = Rank 7
+    0xFF00000000000000ULL  // RANK[7] = Rank 8
+};
+
+constexpr uint64_t KNIGHT_ATTACKS[64] = {
+    /* h1 */ 0x0000000000020400ULL,
+    /* g1 */ 0x0000000000050800ULL,
+    /* f1 */ 0x00000000000A1100ULL,
+    /* e1 */ 0x0000000000142200ULL,
+    /* d1 */ 0x0000000000284400ULL,
+    /* c1 */ 0x0000000000508800ULL,
+    /* b1 */ 0x0000000000A01000ULL,
+    /* a1 */ 0x0000000000402000ULL,
+
+    /* h2 */ 0x0000000002040004ULL,
+    /* g2 */ 0x0000000005080008ULL,
+    /* f2 */ 0x000000000A110011ULL,
+    /* e2 */ 0x0000000014220022ULL,
+    /* d2 */ 0x0000000028440044ULL,
+    /* c2 */ 0x0000000050880088ULL,
+    /* b2 */ 0x00000000A0100010ULL,
+    /* a2 */ 0x0000000040200020ULL,
+
+    /* h3 */ 0x0000000204000402ULL,
+    /* g3 */ 0x0000000508000805ULL,
+    /* f3 */ 0x0000000A1100110AULL,
+    /* e3 */ 0x0000001422002214ULL,
+    /* d3 */ 0x0000002844004428ULL,
+    /* c3 */ 0x0000005088008850ULL,
+    /* b3 */ 0x000000A0100010A0ULL,
+    /* a3 */ 0x0000004020002040ULL,
+
+    /* h4 */ 0x0000020400040200ULL,
+    /* g4 */ 0x0000050800080500ULL,
+    /* f4 */ 0x00000A1100110A00ULL,
+    /* e4 */ 0x0000142200221400ULL,
+    /* d4 */ 0x0000284400442800ULL,
+    /* c4 */ 0x0000508800885000ULL,
+    /* b4 */ 0x0000A0100010A000ULL,
+    /* a4 */ 0x0000402000204000ULL,
+
+    /* h5 */ 0x0002040004020000ULL,
+    /* g5 */ 0x0005080008050000ULL,
+    /* f5 */ 0x000A1100110A0000ULL,
+    /* e5 */ 0x0014220022140000ULL,
+    /* d5 */ 0x0028440044280000ULL,
+    /* c5 */ 0x0050880088500000ULL,
+    /* b5 */ 0x00A0100010A00000ULL,
+    /* a5 */ 0x0040200020400000ULL,
+
+    /* h6 */ 0x0204000402000000ULL,
+    /* g6 */ 0x0508000805000000ULL,
+    /* f6 */ 0x0A1100110A000000ULL,
+    /* e6 */ 0x1422002214000000ULL,
+    /* d6 */ 0x2844004428000000ULL,
+    /* c6 */ 0x5088008850000000ULL,
+    /* b6 */ 0xA0100010A0000000ULL,
+    /* a6 */ 0x4020002040000000ULL,
+
+    /* h7 */ 0x0400040200000000ULL,
+    /* g7 */ 0x0800080500000000ULL,
+    /* f7 */ 0x1100110A00000000ULL,
+    /* e7 */ 0x2200221400000000ULL,
+    /* d7 */ 0x4400442800000000ULL,
+    /* c7 */ 0x8800885000000000ULL,
+    /* b7 */ 0x100010A000000000ULL,
+    /* a7 */ 0x2000204000000000ULL,
+
+    /* h8 */ 0x0004020000000000ULL,
+    /* g8 */ 0x0008050000000000ULL,
+    /* f8 */ 0x00110A0000000000ULL,
+    /* e8 */ 0x0022140000000000ULL,
+    /* d8 */ 0x0044280000000000ULL,
+    /* c8 */ 0x0088500000000000ULL,
+    /* b8 */ 0x0010A00000000000ULL,
+    /* a8 */ 0x0020400000000000ULL};
+
+constexpr uint64_t DIAGONALS[64] = {
+    /* h1 */ 0x8040201008040200ULL,
+    /* g1 */ 0x0080402010080500ULL,
+    /* f1 */ 0x0000804020110A00ULL,
+    /* e1 */ 0x0000008041221400ULL,
+    /* d1 */ 0x0000000182442800ULL,
+    /* c1 */ 0x0000010204885000ULL,
+    /* b1 */ 0x000102040810A000ULL,
+    /* a1 */ 0x0102040810204000ULL,
+
+    /* h2 */ 0x4020100804020004ULL,
+    /* g2 */ 0x8040201008050008ULL,
+    /* f2 */ 0x00804020110A0011ULL,
+    /* e2 */ 0x0000804122140022ULL,
+    /* d2 */ 0x0000018244280044ULL,
+    /* c2 */ 0x0001020488500088ULL,
+    /* b2 */ 0x0102040810A00010ULL,
+    /* a2 */ 0x0204081020400020ULL,
+
+    /* h3 */ 0x2010080402000402ULL,
+    /* g3 */ 0x4020100805000805ULL,
+    /* f3 */ 0x804020110A00110AULL,
+    /* e3 */ 0x0080412214002214ULL,
+    /* d3 */ 0x0001824428004428ULL,
+    /* c3 */ 0x0102048850008850ULL,
+    /* b3 */ 0x02040810A00010A0ULL,
+    /* a3 */ 0x0408102040002040ULL,
+
+    /* h4 */ 0x1008040200040201ULL,
+    /* g4 */ 0x2010080500080502ULL,
+    /* f4 */ 0x4020110A00110A04ULL,
+    /* e4 */ 0x8041221400221408ULL,
+    /* d4 */ 0x0182442800442810ULL,
+    /* c4 */ 0x0204885000885020ULL,
+    /* b4 */ 0x040810A00010A040ULL,
+    /* a4 */ 0x0810204000204080ULL,
+
+    /* h5 */ 0x0804020004020100ULL,
+    /* g5 */ 0x1008050008050201ULL,
+    /* f5 */ 0x20110A00110A0402ULL,
+    /* e5 */ 0x4122140022140804ULL,
+    /* d5 */ 0x8244280044281008ULL,
+    /* c5 */ 0x0488500088502010ULL,
+    /* b5 */ 0x0810A00010A04020ULL,
+    /* a5 */ 0x1020400020408040ULL,
+
+    /* h6 */ 0x0402000402010000ULL,
+    /* g6 */ 0x0805000805020100ULL,
+    /* f6 */ 0x110A00110A040201ULL,
+    /* e6 */ 0x2214002214080402ULL,
+    /* d6 */ 0x4428004428100804ULL,
+    /* c6 */ 0x8850008850201008ULL,
+    /* b6 */ 0x10A00010A0402010ULL,
+    /* a6 */ 0x2040002040804020ULL,
+
+    /* h7 */ 0x0200040201000000ULL,
+    /* g7 */ 0x0500080502010000ULL,
+    /* f7 */ 0x0A00110A04020100ULL,
+    /* e7 */ 0x1400221408040201ULL,
+    /* d7 */ 0x2800442810080402ULL,
+    /* c7 */ 0x5000885020100804ULL,
+    /* b7 */ 0xA00010A040201008ULL,
+    /* a7 */ 0x4000204080402010ULL,
+
+    /* h8 */ 0x0004020100000000ULL,
+    /* g8 */ 0x0008050201000000ULL,
+    /* f8 */ 0x00110A0402010000ULL,
+    /* e8 */ 0x0022140804020100ULL,
+    /* d8 */ 0x0044281008040201ULL,
+    /* c8 */ 0x0088502010080402ULL,
+    /* b8 */ 0x0010A04020100804ULL,
+    /* a8 */ 0x0020408040201008ULL};
+
+constexpr uint64_t KING_ATTACKS[64] = {
+    0x0000000000000302ULL, // h1
+    0x0000000000000705ULL, // g1
+    0x0000000000000E0AULL, // f1
+    0x0000000000001C14ULL, // e1
+    0x0000000000003828ULL, // d1
+    0x0000000000007050ULL, // c1
+    0x000000000000E0A0ULL, // b1
+    0x000000000000C040ULL, // a1
+
+    0x0000000000030203ULL, // h2
+    0x0000000000070507ULL, // g2
+    0x00000000000E0A0EULL, // f2
+    0x00000000001C141CULL, // e2
+    0x0000000000382838ULL, // d2
+    0x0000000000705070ULL, // c2
+    0x0000000000E0A0E0ULL, // b2
+    0x0000000000C040C0ULL, // a2
+
+    0x0000000003020300ULL, // h3
+    0x0000000007050700ULL, // g3
+    0x000000000E0A0E00ULL, // f3
+    0x000000001C141C00ULL, // e3
+    0x0000000038283800ULL, // d3
+    0x0000000070507000ULL, // c3
+    0x00000000E0A0E000ULL, // b3
+    0x00000000C040C000ULL, // a3
+
+    0x0000000302030000ULL, // h4
+    0x0000000705070000ULL, // g4
+    0x0000000E0A0E0000ULL, // f4
+    0x0000001C141C0000ULL, // e4
+    0x0000003828380000ULL, // d4
+    0x0000007050700000ULL, // c4
+    0x000000E0A0E00000ULL, // b4
+    0x000000C040C00000ULL, // a4
+
+    0x0000030203000000ULL, // h5
+    0x0000070507000000ULL, // g5
+    0x00000E0A0E000000ULL, // f5
+    0x00001C141C000000ULL, // e5
+    0x0000382838000000ULL, // d5
+    0x0000705070000000ULL, // c5
+    0x0000E0A0E0000000ULL, // b5
+    0x0000C040C0000000ULL, // a5
+
+    0x0003020300000000ULL, // h6
+    0x0007050700000000ULL, // g6
+    0x000E0A0E00000000ULL, // f6
+    0x001C141C00000000ULL, // e6
+    0x0038283800000000ULL, // d6
+    0x0070507000000000ULL, // c6
+    0x00E0A0E000000000ULL, // b6
+    0x00C040C000000000ULL, // a6
+
+    0x0302030000000000ULL, // h7
+    0x0705070000000000ULL, // g7
+    0x0E0A0E0000000000ULL, // f7
+    0x1C141C0000000000ULL, // e7
+    0x3828380000000000ULL, // d7
+    0x7050700000000000ULL, // c7
+    0xE0A0E00000000000ULL, // b7
+    0xC040C00000000000ULL, // a7
+
+    0x0203000000000000ULL, // h8
+    0x0507000000000000ULL, // g8
+    0x0A0E000000000000ULL, // f8
+    0x141C000000000000ULL, // e8
+    0x2838000000000000ULL, // d8
+    0x5070000000000000ULL, // c8
+    0xA0E0000000000000ULL, // b8
+    0x40C0000000000000ULL  // a8
+};
+
+
+// Naive approach memory could be reduced because edge pieces don't matter.
+// (Assuming all pieces are enemy pieces)
+
+// Maximum number of squares attacked by queen or bishop is 13 2^13 = 8192
+// (Could be 13 - 4 = 9)
+uint64_t DIAGONAL_ATTACKS[64][8192];
+
+// Maximum number of squares attacked by queen or rook is 14 2^14 = 16384 (Could
+// be 14 - 4 = 10)
+uint64_t STRAIGHT_ATTACKS[64][16384];
+
+uint64_t get_diagonal_attack_bitboard(uint8_t square, uint16_t piece_layout) {
+  uint64_t enemy_piece_layout = _pdep_u64(piece_layout, DIAGONALS[square]);
+  uint64_t attack_bitboard = 0;
+
+  // NorthEast
+  uint8_t temp_index = square;
+  while (temp_index % 8 > 0 && !(enemy_piece_layout & (1ULL << temp_index))) {
+    attack_bitboard |= (1ULL << temp_index);
+    temp_index += 7;
+  }
+  attack_bitboard |= (1ULL << temp_index);
+
+  // SouthWest
+  temp_index = square;
+  while (temp_index % 8 < 7 && !(enemy_piece_layout & (1ULL << temp_index))) {
+    attack_bitboard |= (1ULL << temp_index);
+    temp_index -= 7;
+  }
+  attack_bitboard |= (1ULL << temp_index);
+
+  // NorthWest
+  temp_index = square;
+  while (temp_index % 8 < 7 && !(enemy_piece_layout & (1ULL << temp_index))) {
+    attack_bitboard |= (1ULL << temp_index);
+    temp_index += 9;
+  }
+  attack_bitboard |= (1ULL << temp_index);
+
+  // SouthEast
+  temp_index = square;
+  while (temp_index % 8 > 0 && !(enemy_piece_layout & (1ULL << temp_index))) {
+    attack_bitboard |= (1ULL << temp_index);
+    temp_index -= 9;
+  }
+  attack_bitboard |= (1ULL << temp_index);
+
+  return (attack_bitboard & ~(1ULL << square));
+}
+
+uint64_t get_striaght_attack_bitboard(uint8_t square, uint16_t piece_layout) {
+  uint64_t enemy_piece_layout =
+      _pdep_u64(piece_layout, FILE[7 - (square % 8)] ^ RANK[square / 8]);
+  uint64_t attack_bitboard = 0;
+
+  // North
+  uint8_t temp_index = square;
+  while (temp_index < 56 && !(enemy_piece_layout & (1ULL << temp_index))) {
+    attack_bitboard |= (1ULL << temp_index);
+    temp_index += 8;
+  }
+  attack_bitboard |= (1ULL << temp_index);
+
+  // South
+  temp_index = square;
+  while (temp_index > 7 && !(enemy_piece_layout & (1ULL << temp_index))) {
+    attack_bitboard |= (1ULL << temp_index);
+    temp_index -= 8;
+  }
+  attack_bitboard |= (1ULL << temp_index);
+
+  // West
+  temp_index = square;
+  while (temp_index % 8 < 7 && !(enemy_piece_layout & (1ULL << temp_index))) {
+    attack_bitboard |= (1ULL << temp_index);
+    temp_index++;
+  }
+  attack_bitboard |= (1ULL << temp_index);
+
+  // East
+  temp_index = square;
+  while (temp_index % 8 > 0 && !(enemy_piece_layout & (1ULL << temp_index))) {
+    attack_bitboard |= (1ULL << temp_index);
+    temp_index--;
+  }
+  attack_bitboard |= (1ULL << temp_index);
+
+  return (attack_bitboard & ~(1ULL << square));
+}
+
+void init_diagonal_attack_lookup_table() {
+  for (int i = 0; i < 64; i++) {
+    for (int j = 0; j < 8192; j++) {
+      DIAGONAL_ATTACKS[i][j] = get_diagonal_attack_bitboard(i, j);
+    }
+  }
+}
+
+void init_straight_attack_lookup_table(){
+  for (int i = 0; i < 64; i++) {
+    for (int j = 0; j < 16384; j++) {
+      STRAIGHT_ATTACKS[i][j] = get_striaght_attack_bitboard(i, j);
+    }
+  }
+}
