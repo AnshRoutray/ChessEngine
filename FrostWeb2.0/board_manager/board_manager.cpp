@@ -1,76 +1,26 @@
+#include "board_manager.hpp"
+#include "lookup_tables.hpp"
 #include "move_encoding.hpp"
 #include <cmath>
 #include <cstdint>
-#include "lookup_tables.hpp"
 #include <immintrin.h>
 
-// Piece bitboard initial positions
-constexpr uint64_t WHITE_PAWN_INIT{0b11111111ULL << (8 * 1)};
-constexpr uint64_t WHITE_KNIGHT_INIT{0b01000010ULL};
-constexpr uint64_t WHITE_BISHOP_INIT{0b00100100ULL};
-constexpr uint64_t WHITE_ROOK_INIT{0b10000001ULL};
-constexpr uint64_t WHITE_QUEEN_INIT{0b00010000ULL};
-constexpr uint64_t WHITE_KING_INIT{0b00001000ULL};
-
-constexpr uint64_t BLACK_PAWN_INIT{0b11111111ULL << (8 * 6)};
-constexpr uint64_t BLACK_KNIGHT_INIT{0b01000010ULL << (8 * 7)};
-constexpr uint64_t BLACK_BISHOP_INIT{0b00100100ULL << (8 * 7)};
-constexpr uint64_t BLACK_ROOK_INIT{0b10000001ULL << (8 * 7)};
-constexpr uint64_t BLACK_QUEEN_INIT{0b00010000ULL << (8 * 7)};
-constexpr uint64_t BLACK_KING_INIT{0b00001000ULL << (8 * 7)};
-
-// Turn indicators
-constexpr uint8_t WHITE_TURN{1};
-constexpr uint8_t BLACK_TURN{0};
-
-// Castling rights
-constexpr uint8_t CASTLE_SHORT_AND_LONG{0};
-constexpr uint8_t CASTLE_SHORT_NO_LONG{1};
-constexpr uint8_t CASTLE_LONG_NO_SHORT{2};
-constexpr uint8_t CASTLE_NO_SHORT_NO_LONG{3};
-
-constexpr int MAX_MOVES = 256;
-
-class Board {
-public:
-  uint16_t generateLegalMoves(Move *moveList);
-  void playMove(Move move);
-
-private:
-  uint64_t white_pawns;
-  uint64_t white_knights;
-  uint64_t white_bishops;
-  uint64_t white_rooks;
-  uint64_t white_queen;
-  uint64_t white_king;
-
-  uint64_t black_pawns;
-  uint64_t black_knights;
-  uint64_t black_bishops;
-  uint64_t black_rooks;
-  uint64_t black_queen;
-  uint64_t black_king;
-  uint8_t white_castle_state;
-  uint8_t black_castle_state;
-  uint8_t turn;
-  Move previous_move;
-
-  inline uint8_t get_first_index(uint64_t bitboard);
-  inline uint64_t shift_piece(uint64_t bitboard, int places);
-  inline void clear_piece(uint64_t &bitboard, uint8_t index);
-};
-
 Board::Board()
-    : white_pawns{WHITE_PAWN_INIT}, white_knights{WHITE_KNIGHT_INIT},
-      white_bishops{WHITE_BISHOP_INIT}, white_rooks{WHITE_ROOK_INIT},
-      white_queen{WHITE_QUEEN_INIT}, white_king{WHITE_KING_INIT},
-      black_pawns{BLACK_PAWN_INIT}, black_knights{BLACK_KNIGHT_INIT},
-      black_bishops{BLACK_BISHOP_INIT}, black_rooks{BLACK_ROOK_INIT},
-      black_queen{BLACK_QUEEN_INIT}, black_king{BLACK_KING_INIT},
-      turn{WHITE_TURN}, white_castle_state{CASTLE_SHORT_AND_LONG},
-      black_castle_state{CASTLE_SHORT_AND_LONG} {
-        init_diagonal_attack_lookup_table();
-      }
+    : pawns{WHITE_PAWN_INIT}, knights{WHITE_KNIGHT_INIT},
+      bishops{WHITE_BISHOP_INIT}, rooks{WHITE_ROOK_INIT},
+      queen{WHITE_QUEEN_INIT}, king{WHITE_KING_INIT},
+      enemy_pawns{BLACK_PAWN_INIT}, enemy_knights{BLACK_KNIGHT_INIT},
+      enemy_bishops{BLACK_BISHOP_INIT}, enemy_rooks{BLACK_ROOK_INIT},
+      enemy_queen{BLACK_QUEEN_INIT}, enemy_king{BLACK_KING_INIT},
+      turn{WHITE_TURN} {
+  friendly_pieces = pawns | knights | bishops | rooks | queen | king;
+  enemy_pieces = enemy_pawns | enemy_knights | enemy_bishops | enemy_queen |
+                 enemy_rooks | enemy_king;
+  castle_state[0] = CASTLE_SHORT_AND_LONG;
+  castle_state[1] = CASTLE_SHORT_AND_LONG;
+  init_diagonal_attack_lookup_table();
+  init_straight_attack_lookup_table();
+}
 
 inline void Board::clear_piece(uint64_t &bitboard, uint8_t index) {
   bitboard &= ~(1ULL << (turn ? index : 63 - index));
@@ -96,30 +46,33 @@ inline uint64_t Board::shift_piece(uint64_t bitboard, int places) {
   return bitboard;
 }
 
+bool Board::is_square_attacked(uint64_t bitboard, uint8_t square) {
+  uint64_t isAttacked =
+      (DIAGONAL_ATTACKS[square][_pext_u64(bitboard, DIAGONALS[square])] &
+       (enemy_bishops | enemy_queen));
+  isAttacked |= (STRAIGHT_ATTACKS[square][_pext_u64(
+                     bitboard, FILE[7 - (square % 8)] ^ RANK[square / 8])] &
+                 (enemy_rooks | enemy_queen));
+  isAttacked |= (KNIGHT_ATTACKS[square] & enemy_knights);
+  isAttacked |= KING_ATTACKS[square] & enemy_king;
+  if (turn ? square < 56 : square > 7) {
+    if (square % 8 < 7) {
+      isAttacked |= turn ? ((1ULL << (square + 9)) & enemy_pawns)
+                         : ((1ULL << (square - 7)) & enemy_pawns);
+    }
+    if (square % 8 > 0) {
+      isAttacked |= turn ? ((1ULL << (square + 7)) & enemy_pawns)
+                         : ((1UL << (square - 9)) & enemy_pawns);
+    }
+  }
+  return isAttacked != 0;
+}
+
 void Board::playMove(Move move) {}
 
 uint16_t Board::generateLegalMoves(Move moveList[MAX_MOVES]) {
 
-  uint64_t pawns = turn ? white_pawns : black_pawns;
-  uint64_t knights = turn ? white_knights : black_knights;
-  uint64_t bishops = turn ? white_bishops : black_bishops;
-  uint64_t rooks = turn ? white_rooks : black_rooks;
-  uint64_t queen = turn ? white_queen : black_queen;
-  uint64_t king = turn ? white_king : black_king;
-
-  uint64_t enemy_pawns = turn ? black_pawns : white_pawns;
-  uint64_t enemy_knights = turn ? black_knights : white_knights;
-  uint64_t enemy_bishops = turn ? black_bishops : white_bishops;
-  uint64_t enemy_rooks = turn ? black_rooks : white_rooks;
-  uint64_t enemy_queen = turn ? black_queen : white_queen;
-  uint64_t enemy_king = turn ? black_king : white_king;
-
   uint16_t moveIndex = 0;
-
-  const uint64_t friendly_pieces =
-      pawns | knights | bishops | rooks | queen | king;
-  const uint64_t enemy_pieces = enemy_pawns | enemy_knights | enemy_bishops |
-                                enemy_queen | enemy_rooks | enemy_king;
 
   // Generating pawn moves
   uint64_t single_pawn_moves =
@@ -225,14 +178,14 @@ uint16_t Board::generateLegalMoves(Move moveList[MAX_MOVES]) {
     index = __builtin_ctzll(temp_knights);
   }
 
-  //Generating Diagonal Moves
+  // Generating Diagonal Moves
   uint64_t diagonal_pieces = queen | bishops;
-  while(diagonal_pieces){
+  while (diagonal_pieces) {
     index = __builtin_ctzll(diagonal_pieces);
     uint16_t key = _pext_u64(friendly_pieces | enemy_pieces, DIAGONALS[index]);
     uint64_t attack_bitboard = DIAGONAL_ATTACKS[index][key];
     attack_bitboard &= ~friendly_pieces;
-    while(attack_bitboard){
+    while (attack_bitboard) {
       uint8_t temp_index = __builtin_ctzll(attack_bitboard);
       moveList[moveIndex++] = ENCODE_MOVE(temp_index, index, 0, 0);
       attack_bitboard &= attack_bitboard - 1;
@@ -240,63 +193,73 @@ uint16_t Board::generateLegalMoves(Move moveList[MAX_MOVES]) {
     diagonal_pieces &= diagonal_pieces - 1;
   }
 
-  //Generating Straight Moves
+  // Generating Straight Moves
   uint64_t straight_pieces = queen | rooks;
-    while(straight_pieces){
+  while (straight_pieces) {
     index = __builtin_ctzll(straight_pieces);
-    uint16_t key = _pext_u64(friendly_pieces | enemy_pieces, FILE[7 - (index % 8)] ^ RANK[index / 8]);
+    uint16_t key = _pext_u64(friendly_pieces | enemy_pieces,
+                             FILE[7 - (index % 8)] ^ RANK[index / 8]);
     uint64_t attack_bitboard = STRAIGHT_ATTACKS[index][key];
     attack_bitboard &= ~friendly_pieces;
-    while(attack_bitboard){
+    while (attack_bitboard) {
       uint8_t temp_index = __builtin_ctzll(attack_bitboard);
       moveList[moveIndex++] = ENCODE_MOVE(temp_index, index, 0, 0);
       attack_bitboard &= attack_bitboard - 1;
     }
     straight_pieces &= straight_pieces - 1;
   }
-  
-  //Generating King Moves
+
+  // Generating King Moves
   uint8_t king_square = __builtin_ctzll(king);
   uint64_t king_attacks = KING_ATTACKS[king_square] & ~friendly_pieces;
-  while(king_attacks){
+  while (king_attacks) {
     index = __builtin_ctzll(king_attacks);
-    moveList[moveIndex++] = (index, king_square, 0, 0);
+    moveList[moveIndex++] = ENCODE_MOVE(index, king_square, 0, 0);
     king_attacks &= king_attacks - 1;
   }
 
-  //Filtering out illegal moves NEEDS REVIEW (TERRIBLE CODE)
+  // Castling
+  uint64_t board_layout = friendly_pieces | enemy_pieces;
+  if (castle_state[turn] == CASTLE_SHORT_AND_LONG ||
+      castle_state[turn] == CASTLE_SHORT_NO_LONG) {
+    if (!(board_layout & (1ULL << (king_square - 1))) &&
+        !(board_layout & (1ULL << (king_square - 2))) &&
+        !(is_square_attacked(board_layout, king_square - 1) ||
+          is_square_attacked(board_layout, king_square - 2) ||
+          is_square_attacked(board_layout, king_square))) {
+      moveList[moveIndex++] = ENCODE_MOVE(king_square - 2, king_square, 0, 0);
+    }
+  }
+  if (castle_state[turn] == CASTLE_SHORT_AND_LONG ||
+      castle_state[turn] == CASTLE_LONG_NO_SHORT) {
+    if (!(board_layout & (1ULL << (king_square + 1))) &&
+        !(board_layout & (1ULL << (king_square + 2))) &&
+        !(is_square_attacked(board_layout, king_square + 1) ||
+          is_square_attacked(board_layout, king_square + 2) ||
+          is_square_attacked(board_layout, king_square))) {
+      moveList[moveIndex++] = ENCODE_MOVE(king_square + 2, king_square, 0, 0);
+    }
+  }
+
   uint16_t final_index = 0;
-  for(int i = 0; i < moveIndex; ++i){
+  for (int i = 0; i < moveIndex; ++i) {
     uint8_t to_square = GET_TO_SQUARE(moveList[i]);
     uint8_t from_square = GET_FROM_SQUARE(moveList[i]);
     uint8_t en_passant_flag = GET_EN_PASSANT_FLAG(moveList[moveIndex]);
     uint64_t bitboard = friendly_pieces | enemy_pieces;
-    if(1 << from_square & king){
+    if (king & (1 << from_square)) {
       king_square = to_square;
     }
     bitboard &= ~(1 << from_square);
     bitboard |= (1 << to_square);
-    if(en_passant_flag){
+    if (en_passant_flag) {
       bitboard &= ~(1 << (to_square + (turn ? -8 : 8)));
     }
-    uint64_t isAttacked = (DIAGONAL_ATTACKS[king_square][_pext_u64(bitboard, DIAGONALS[king_square])] & 
-      (enemy_bishops | enemy_queen)) && 1;
-    isAttacked |= (STRAIGHT_ATTACKS[king_square][_pext_u64(friendly_pieces | enemy_pieces, 
-      FILE[7 - (king_square % 8)] ^ RANK[king_square / 8])] & (enemy_rooks | enemy_queen)); 
-    isAttacked |= (KNIGHT_ATTACKS[king_square] & enemy_knights);
-    if(turn ? king_square < 56 : king_square > 7){
-      if(king_square % 8 < 7){
-        isAttacked |= turn ? ((king << 9) & enemy_pawns) : ((king >> 7) & enemy_pawns);
-      }
-      if(king_square % 8 > 0){
-        isAttacked |= turn ? ((king << 7) & enemy_pawns) : ((king >> 9) & enemy_pawns);
-      }
-    }
-    if(!isAttacked){
+    uint64_t isAttacked = is_square_attacked(bitboard, king_square);
+    if (!isAttacked) {
       moveList[final_index] = moveList[i];
       final_index++;
     }
   }
-
   return final_index;
 }
