@@ -35,6 +35,11 @@ public:
   uint16_t generateLegalMoves(Move moveList[MAX_MOVES]);
   void playMove(Move move);
   Board();
+  Board(uint64_t pawns, uint64_t knights, uint64_t bishops, uint64_t rooks, 
+        uint64_t queen, uint64_t king, uint64_t enemy_pawns, uint64_t enemy_knights, 
+        uint64_t enemy_bishops, uint64_t enemy_rooks, uint64_t enemy_queen, 
+        uint64_t enemy_king, uint8_t castle_state[2], 
+        uint8_t turn, Move previous_move);
 
 private:
   uint64_t pawns;

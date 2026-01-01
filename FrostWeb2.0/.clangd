@@ -1,0 +1,12 @@
+CompileFlags:
+  Add: 
+    - -std=c++17
+    - -Wall
+    - -Wextra
+    - -Wpedantic
+  CompilationDatabase: build/
+
+Diagnostics:
+  ClangTidy:
+    Add: [performance-*, readability-*, bugprone-*]
+    Remove: [readability-magic-numbers]

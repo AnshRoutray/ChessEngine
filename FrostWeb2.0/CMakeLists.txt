@@ -35,6 +35,6 @@ target_link_libraries(chess_engine chess_engine_lib)
 enable_testing()
 
 # Test executables
-add_executable(test_movegen tests/test_move_gen.cpp)
+add_executable(test_movegen tests/one_test.cpp)
 target_link_libraries(test_movegen chess_engine_lib)
 add_test(NAME MoveGenTest COMMAND test_movegen)

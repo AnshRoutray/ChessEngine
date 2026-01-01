@@ -22,6 +22,24 @@ Board::Board()
   init_straight_attack_lookup_table();
 }
 
+Board::Board(uint64_t pawns, uint64_t knights, uint64_t bishops, uint64_t rooks, 
+        uint64_t queen, uint64_t king, uint64_t enemy_pawns, uint64_t enemy_knights, 
+        uint64_t enemy_bishops, uint64_t enemy_rooks, uint64_t enemy_queen, 
+        uint64_t enemy_king, uint8_t castle_state[2], uint8_t turn, 
+        Move previous_move): pawns(pawns), knights(knights), 
+        bishops(bishops), rooks(rooks), queen(queen),
+        king(king), enemy_pawns(enemy_pawns), 
+        enemy_knights(enemy_knights), enemy_bishops(enemy_bishops),
+        enemy_rooks(enemy_rooks), enemy_queen(enemy_queen),
+        enemy_king(enemy_king), castle_state{castle_state[0], castle_state[1]},
+        turn(turn), previous_move(previous_move) {
+          friendly_pieces = pawns | knights | bishops | rooks | queen | king;
+          enemy_pieces = enemy_pawns | enemy_knights | enemy_bishops |
+                         enemy_rooks | enemy_queen | enemy_king;
+          init_diagonal_attack_lookup_table();
+          init_straight_attack_lookup_table();
+        }
+
 inline void Board::clear_piece(uint64_t &bitboard, uint8_t index) {
   bitboard &= ~(1ULL << (turn ? index : 63 - index));
 }
@@ -51,7 +69,7 @@ bool Board::is_square_attacked(uint64_t bitboard, uint8_t square) {
       (DIAGONAL_ATTACKS[square][_pext_u64(bitboard, DIAGONALS[square])] &
        (enemy_bishops | enemy_queen));
   isAttacked |= (STRAIGHT_ATTACKS[square][_pext_u64(
-                     bitboard, FILE[7 - (square % 8)] ^ RANK[square / 8])] &
+                     bitboard, FILE[square % 8] ^ RANK[square / 8])] &
                  (enemy_rooks | enemy_queen));
   isAttacked |= (KNIGHT_ATTACKS[square] & enemy_knights);
   isAttacked |= KING_ATTACKS[square] & enemy_king;
@@ -148,16 +166,16 @@ uint16_t Board::generateLegalMoves(Move moveList[MAX_MOVES]) {
   }
   int previous_move_to = static_cast<int>(GET_TO_SQUARE(previous_move));
   int previous_move_from = static_cast<int>(GET_FROM_SQUARE(previous_move));
-  uint64_t last_piece_position = 1 << previous_move_to;
+  uint64_t last_piece_position = 1ULL << previous_move_to;
   if ((last_piece_position & enemy_pawns) &&
       (abs(previous_move_to - previous_move_from) == 16)) {
-    if (((last_piece_position & ~FILE[0]) << 1) & pawns) {
+    if (((last_piece_position & ~FILE[7]) << 1) & pawns) {
       moveList[moveIndex++] = ENCODE_MOVE(
-          previous_move_to + 1, previous_move_to + (turn ? 8 : -8), 1, 0);
+          previous_move_to + (turn ? 8 : -8), previous_move_to - 1, 1, 0);
     }
-    if (((last_piece_position & ~FILE[7]) >> 1) & pawns) {
+    if (((last_piece_position & ~FILE[0]) >> 1) & pawns) {
       moveList[moveIndex++] = ENCODE_MOVE(
-          previous_move_to - 1, previous_move_to + (turn ? 8 : -8), 1, 0);
+          previous_move_to + (turn ? 8 : -8), previous_move_to + 1, 1, 0);
     }
   }
 
@@ -198,7 +216,7 @@ uint16_t Board::generateLegalMoves(Move moveList[MAX_MOVES]) {
   while (straight_pieces) {
     index = __builtin_ctzll(straight_pieces);
     uint16_t key = _pext_u64(friendly_pieces | enemy_pieces,
-                             FILE[7 - (index % 8)] ^ RANK[index / 8]);
+                             FILE[index % 8] ^ RANK[index / 8]);
     uint64_t attack_bitboard = STRAIGHT_ATTACKS[index][key];
     attack_bitboard &= ~friendly_pieces;
     while (attack_bitboard) {
@@ -245,15 +263,15 @@ uint16_t Board::generateLegalMoves(Move moveList[MAX_MOVES]) {
   for (int i = 0; i < moveIndex; ++i) {
     uint8_t to_square = GET_TO_SQUARE(moveList[i]);
     uint8_t from_square = GET_FROM_SQUARE(moveList[i]);
-    uint8_t en_passant_flag = GET_EN_PASSANT_FLAG(moveList[moveIndex]);
+    uint8_t en_passant_flag = GET_EN_PASSANT_FLAG(moveList[i]);
     uint64_t bitboard = friendly_pieces | enemy_pieces;
-    if (king & (1 << from_square)) {
+    if (king & (1ULL << from_square)) {
       king_square = to_square;
     }
-    bitboard &= ~(1 << from_square);
-    bitboard |= (1 << to_square);
+    bitboard &= ~(1ULL << from_square);
+    bitboard |= (1ULL << to_square);
     if (en_passant_flag) {
-      bitboard &= ~(1 << (to_square + (turn ? -8 : 8)));
+      bitboard &= ~(1ULL << (to_square + (turn ? -8 : 8)));
     }
     uint64_t isAttacked = is_square_attacked(bitboard, king_square);
     if (!isAttacked) {

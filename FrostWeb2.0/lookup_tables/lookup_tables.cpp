@@ -40,9 +40,9 @@ uint64_t get_diagonal_attack_bitboard(uint8_t square, uint16_t piece_layout) {
   return attack_bitboard;
 }
 
-uint64_t get_striaght_attack_bitboard(uint8_t square, uint16_t piece_layout) {
+uint64_t get_straight_attack_bitboard(uint8_t square, uint16_t piece_layout) {
   uint64_t enemy_piece_layout =
-      _pdep_u64(piece_layout, FILE[7 - (square % 8)] ^ RANK[square / 8]);
+      _pdep_u64(piece_layout, FILE[square % 8] ^ RANK[square / 8]);
   uint64_t attack_bitboard = 0;
 
   // North
@@ -83,7 +83,7 @@ void init_diagonal_attack_lookup_table() {
 void init_straight_attack_lookup_table() {
   for (int i = 0; i < 64; i++) {
     for (int j = 0; j < 16384; j++) {
-      STRAIGHT_ATTACKS[i][j] = get_striaght_attack_bitboard(i, j);
+      STRAIGHT_ATTACKS[i][j] = get_straight_attack_bitboard(i, j);
     }
   }
 }

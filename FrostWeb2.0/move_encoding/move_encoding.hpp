@@ -14,10 +14,12 @@
 
 typedef uint16_t Move;
 
-constexpr uint8_t KNIGHT_PIECE{1};
-constexpr uint8_t BISHOP_PIECE{2};
-constexpr uint8_t ROOK_PIECE{3};
-constexpr uint8_t QUEEN_PIECE{4};
+constexpr uint8_t PAWN_PIECE{1};
+constexpr uint8_t KNIGHT_PIECE{2};
+constexpr uint8_t BISHOP_PIECE{3};
+constexpr uint8_t ROOK_PIECE{4};
+constexpr uint8_t QUEEN_PIECE{5};
+constexpr uint8_t KING_PIECE{6};
 
 constexpr uint8_t TO_SQUARE_POS{0};
 constexpr uint8_t FROM_SQUARE_POS{6};
