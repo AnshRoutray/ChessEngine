@@ -171,11 +171,11 @@ uint16_t Board::generateLegalMoves(Move moveList[MAX_MOVES]) {
       (abs(previous_move_to - previous_move_from) == 16)) {
     if (((last_piece_position & ~FILE[7]) << 1) & pawns) {
       moveList[moveIndex++] = ENCODE_MOVE(
-          previous_move_to + (turn ? 8 : -8), previous_move_to - 1, 1, 0);
+          previous_move_to + (turn ? 8 : -8), previous_move_to + 1, 1, 0);
     }
     if (((last_piece_position & ~FILE[0]) >> 1) & pawns) {
       moveList[moveIndex++] = ENCODE_MOVE(
-          previous_move_to + (turn ? 8 : -8), previous_move_to + 1, 1, 0);
+          previous_move_to + (turn ? 8 : -8), previous_move_to - 1, 1, 0);
     }
   }
 
