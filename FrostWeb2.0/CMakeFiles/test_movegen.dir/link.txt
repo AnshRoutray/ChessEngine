@@ -1,1 +1,0 @@
-/usr/bin/c++  -Wall -Wextra -mbmi2 -g -O0 -Wl,--dependency-file=CMakeFiles/test_movegen.dir/link.d CMakeFiles/test_movegen.dir/tests/test_move_making.cpp.o -o test_movegen  libchess_engine_lib.a

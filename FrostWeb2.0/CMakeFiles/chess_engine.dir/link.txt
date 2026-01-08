@@ -1,1 +1,0 @@
-/usr/bin/c++  -Wall -Wextra -mbmi2 -g -O0 -Wl,--dependency-file=CMakeFiles/chess_engine.dir/link.d CMakeFiles/chess_engine.dir/main.cpp.o -o chess_engine  libchess_engine_lib.a

@@ -1,6 +1,0 @@
-/home/anshr/Projects/FrostWeb/FrostWeb2.0/CMakeFiles/chess_engine_lib.dir
-/home/anshr/Projects/FrostWeb/FrostWeb2.0/CMakeFiles/chess_engine.dir
-/home/anshr/Projects/FrostWeb/FrostWeb2.0/CMakeFiles/test_movegen.dir
-/home/anshr/Projects/FrostWeb/FrostWeb2.0/CMakeFiles/test.dir
-/home/anshr/Projects/FrostWeb/FrostWeb2.0/CMakeFiles/edit_cache.dir
-/home/anshr/Projects/FrostWeb/FrostWeb2.0/CMakeFiles/rebuild_cache.dir
