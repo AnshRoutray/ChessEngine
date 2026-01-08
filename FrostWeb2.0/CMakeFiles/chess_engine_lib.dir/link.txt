@@ -1,0 +1,2 @@
+/usr/bin/ar qc libchess_engine_lib.a CMakeFiles/chess_engine_lib.dir/board_manager/board_manager.cpp.o CMakeFiles/chess_engine_lib.dir/lookup_tables/lookup_tables.cpp.o
+/usr/bin/ranlib libchess_engine_lib.a

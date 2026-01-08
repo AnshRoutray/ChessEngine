@@ -14,6 +14,7 @@
 
 typedef uint16_t Move;
 
+constexpr uint8_t EMPTY_PIECE{0};
 constexpr uint8_t PAWN_PIECE{1};
 constexpr uint8_t KNIGHT_PIECE{2};
 constexpr uint8_t BISHOP_PIECE{3};

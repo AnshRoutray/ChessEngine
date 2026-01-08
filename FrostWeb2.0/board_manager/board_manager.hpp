@@ -29,11 +29,21 @@ constexpr uint8_t CASTLE_LONG_NO_SHORT{2};
 constexpr uint8_t CASTLE_NO_SHORT_NO_LONG{3};
 
 constexpr int MAX_MOVES = 256;
+constexpr uint8_t FRIEND = 0;
+constexpr uint8_t ENEMY = 1;
+
+struct UndoInfo {
+  Move previous_previous_move;
+  uint8_t previous_castle_state[2];
+  uint8_t captured_piece;
+};
 
 class Board {
 public:
   uint16_t generateLegalMoves(Move moveList[MAX_MOVES]);
-  void playMove(Move move);
+  UndoInfo playMove(Move move);
+  void undoMove(UndoInfo undo_info);
+  bool operator==(Board other_board);
   Board();
   Board(uint64_t pawns, uint64_t knights, uint64_t bishops, uint64_t rooks, 
         uint64_t queen, uint64_t king, uint64_t enemy_pawns, uint64_t enemy_knights, 
@@ -62,9 +72,13 @@ private:
   uint8_t castle_state[2];
   uint8_t turn;
   Move previous_move;
+    
+  uint8_t piece_locations[64];
+  uint64_t* piece_map[7][2];
 
   inline uint8_t get_first_index(uint64_t bitboard);
   inline uint64_t shift_piece(uint64_t bitboard, int places);
   inline void clear_piece(uint64_t &bitboard, uint8_t index);
   bool is_square_attacked(uint64_t bitboard, uint8_t square);
+  void init_piece_locations();
 };
