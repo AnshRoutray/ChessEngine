@@ -12,9 +12,7 @@ set(CMAKE_CXX_FLAGS_DEBUG "-g -O0")
 
 # Include directories
 include_directories(
-    ${CMAKE_SOURCE_DIR}/src/board_manager
-    ${CMAKE_SOURCE_DIR}/src/lookup_tables
-    ${CMAKE_SOURCE_DIR}/src/move_encoding
+    ${CMAKE_SOURCE_DIR}/src/include
 )
 
 # Generate Compile Commands
