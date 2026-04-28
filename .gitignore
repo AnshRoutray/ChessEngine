@@ -8,3 +8,24 @@ compile_commands.json
 *.a 
 *.so 
 cmake-build-*/
+
+.vscode/
+build/
+build_debug/
+.clangd
+compile_commands.json
+.cache
+*.o 
+*.a 
+*.so 
+cmake-build-*/
+# Executables
+chess_engine
+test_movegen
+# CMake root artifacts
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+# Python venv
+.venv/
