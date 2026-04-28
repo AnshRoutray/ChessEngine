@@ -23,6 +23,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(ENGINE_SOURCES
     src/board_manager/board_manager.cpp
     src/lookup_tables/lookup_tables.cpp
+    src/search/search.cpp
+    src/evaluate/evaluate.cpp
 )
 
 # Create engine library (reusable for main and tests)

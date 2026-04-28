@@ -2,7 +2,9 @@
 #include <cstdint>
 
 constexpr int16_t INF = INT16_MAX;
-constexpr uint8_t MAX_CAPTURE_MOVES = 31;
+constexpr uint8_t MAX_CAPTURE_MOVES = 218;
+
+Move retrieveBestMove(Board *board, uint8_t depth);
 
 int16_t stableSearch(Board *board, int16_t alpha, int16_t beta);
 

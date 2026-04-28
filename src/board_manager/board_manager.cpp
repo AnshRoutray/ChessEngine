@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdint>
 #include <immintrin.h>
+#include <iostream>
 
 Board::Board()
     : pawns{WHITE_PAWN_INIT}, knights{WHITE_KNIGHT_INIT},
@@ -12,7 +13,7 @@ Board::Board()
       enemy_pawns{BLACK_PAWN_INIT}, enemy_knights{BLACK_KNIGHT_INIT},
       enemy_bishops{BLACK_BISHOP_INIT}, enemy_rooks{BLACK_ROOK_INIT},
       enemy_queen{BLACK_QUEEN_INIT}, enemy_king{BLACK_KING_INIT},
-      turn{WHITE_TURN} {
+      turn{WHITE_TURN}, previous_move{0} {
   friendly_pieces = pawns | knights | bishops | rooks | queen | king;
   enemy_pieces = enemy_pawns | enemy_knights | enemy_bishops | enemy_queen |
                  enemy_rooks | enemy_king;
@@ -98,18 +99,14 @@ void Board::init_piece_locations() {
 }
 
 inline void Board::clear_piece(uint64_t &bitboard, uint8_t index) {
-  bitboard &= ~(1ULL << (turn ? index : 63 - index));
+  bitboard &= ~(1ULL << index);
 }
 
 inline uint8_t Board::get_first_index(uint64_t bitboard) {
   if (bitboard == 0) {
     return 0;
   }
-  if (turn) {
-    return __builtin_ctzll(bitboard);
-  } else {
-    return __builtin_clzll(bitboard);
-  }
+  return __builtin_ctzll(bitboard);
 }
 
 inline uint64_t Board::shift_piece(uint64_t bitboard, int places) {
@@ -126,7 +123,7 @@ bool Board::is_square_attacked(uint64_t bitboard, uint8_t square) {
       (DIAGONAL_ATTACKS[square][_pext_u64(bitboard, DIAGONALS[square])] &
        (enemy_bishops | enemy_queen));
   isAttacked |= (STRAIGHT_ATTACKS[square][_pext_u64(
-                     bitboard, FILE[square % 8] ^ RANK[square / 8])] &
+                     bitboard, COLUMN[square % 8] ^ RANK[square / 8])] &
                  (enemy_rooks | enemy_queen));
   isAttacked |= (KNIGHT_ATTACKS[square] & enemy_knights);
   isAttacked |= KING_ATTACKS[square] & enemy_king;
@@ -184,16 +181,16 @@ UndoInfo Board::playMove(Move move) {
     enemy_pawns &= ~(1ULL << en_passant_square);
     piece_locations[en_passant_square] = 0;
   } else if (piece_type == KING_PIECE) {
-    if (abs(to_square - from_square) > 1) {
+    if (abs(to_square - from_square) == 2) {
       if (to_square < from_square) {
         rooks &= ~(1ULL << (to_square - 1));
         rooks |= 1ULL << (to_square + 1);
         piece_locations[to_square - 1] = 0;
         piece_locations[to_square + 1] = ROOK_PIECE;
       } else {
-        rooks &= ~(1ULL << (to_square + 1));
+        rooks &= ~(1ULL << (to_square + 2));
         rooks |= 1ULL << (to_square - 1);
-        piece_locations[to_square + 1] = 0;
+        piece_locations[to_square + 2] = 0;
         piece_locations[to_square - 1] = ROOK_PIECE;
       }
     }
@@ -216,16 +213,16 @@ UndoInfo Board::playMove(Move move) {
   if (promotion_piece == 0) {
     *piece |= 1ULL << to_square;
     piece_locations[to_square] = piece_type;
-  } else if (promotion_piece == QUEEN_PIECE) {
+  } else if (promotion_piece == 4) {
     queen |= 1ULL << to_square;
     piece_locations[to_square] = QUEEN_PIECE;
-  } else if (promotion_piece == ROOK_PIECE) {
+  } else if (promotion_piece == 3) {
     rooks |= 1ULL << to_square;
     piece_locations[to_square] = ROOK_PIECE;
-  } else if (promotion_piece == KNIGHT_PIECE) {
+  } else if (promotion_piece == 1) {
     knights |= 1ULL << to_square;
     piece_locations[to_square] = KNIGHT_PIECE;
-  } else if (promotion_piece == BISHOP_PIECE) {
+  } else if (promotion_piece == 2) {
     bishops |= 1ULL << to_square;
     piece_locations[to_square] = BISHOP_PIECE;
   }
@@ -237,7 +234,9 @@ UndoInfo Board::playMove(Move move) {
   std::swap(rooks, enemy_rooks);
   std::swap(queen, enemy_queen);
   std::swap(king, enemy_king);
-  std::swap(friendly_pieces, enemy_pieces);
+  friendly_pieces = pawns | knights | bishops | rooks | queen | king;
+  enemy_pieces = enemy_pawns | enemy_knights | enemy_bishops | enemy_rooks |
+                 enemy_queen | enemy_king;
   return info;
 }
 
@@ -290,7 +289,9 @@ void Board::undoMove(UndoInfo undo_info) {
   std::swap(rooks, enemy_rooks);
   std::swap(queen, enemy_queen);
   std::swap(king, enemy_king);
-  std::swap(friendly_pieces, enemy_pieces);
+  friendly_pieces = pawns | knights | bishops | rooks | queen | king;
+  enemy_pieces = enemy_pawns | enemy_knights | enemy_bishops | enemy_rooks |
+                 enemy_queen | enemy_king;
 }
 
 uint16_t Board::generateLegalMoves(Move moveList[MAX_MOVES]) {
@@ -300,85 +301,87 @@ uint16_t Board::generateLegalMoves(Move moveList[MAX_MOVES]) {
   // Generating pawn moves
   uint64_t single_pawn_moves =
       (shift_piece(pawns, 8)) & ~friendly_pieces & ~enemy_pieces;
-  uint64_t double_pawn_moves =
-      (shift_piece(single_pawn_moves, 8)) & ~friendly_pieces & ~enemy_pieces;
 
-  uint8_t index = get_first_index(single_pawn_moves);
+  uint64_t starting_pawns = turn ? (pawns & RANK[1]) : (pawns & RANK[6]);
+  uint64_t double_pawn_moves =
+      (shift_piece(shift_piece(starting_pawns, 8) & ~friendly_pieces &
+                       ~enemy_pieces,
+                   8) &
+       ~friendly_pieces & ~enemy_pieces);
+
+  uint8_t index = __builtin_ctzll(single_pawn_moves);
   while (single_pawn_moves) {
-    if (index < 56) {
-      moveList[moveIndex++] =
-          turn ? (ENCODE_MOVE(index, index - 8, 0, 0))
-               : (ENCODE_MOVE(63 - index, 63 - (index - 8), 0, 0));
+    bool is_promotion = turn ? (index >= 56) : (index < 8);
+    if (!is_promotion) {
+      moveList[moveIndex++] = turn ? (ENCODE_MOVE(index, index - 8, 0, 0))
+                                   : (ENCODE_MOVE(index, index + 8, 0, 0));
     } else {
       for (int i = 1; i <= 4; i++) {
-        moveList[moveIndex++] =
-            turn ? ENCODE_MOVE(index, index - 8, 0, i)
-                 : ENCODE_MOVE(63 - index, 63 - (index - 8), 0, i);
+        moveList[moveIndex++] = turn ? ENCODE_MOVE(index, index - 8, 0, i)
+                                     : ENCODE_MOVE(index, index + 8, 0, i);
       }
     }
     clear_piece(single_pawn_moves, index);
-    index = get_first_index(single_pawn_moves);
+    index = __builtin_ctzll(single_pawn_moves);
   }
-  index = get_first_index(double_pawn_moves);
-  while (double_pawn_moves && index < 40) {
-    moveList[moveIndex++] =
-        turn ? ENCODE_MOVE(index, index - 16, 0, 0)
-             : ENCODE_MOVE(63 - index, 63 - (index - 16), 0, 0);
+  index = __builtin_ctzll(double_pawn_moves);
+  while (double_pawn_moves) {
+    moveList[moveIndex++] = turn ? ENCODE_MOVE(index, index - 16, 0, 0)
+                                 : ENCODE_MOVE(index, index + 16, 0, 0);
     clear_piece(double_pawn_moves, index);
-    index = get_first_index(double_pawn_moves);
+    index = __builtin_ctzll(double_pawn_moves);
   }
-
   uint64_t diagonal_pawn_attacks_left = 0;
   uint64_t diagonal_pawn_attacks_right = 0;
   if (turn) {
-    diagonal_pawn_attacks_left = ((pawns & ~FILE[0]) << 9) & enemy_pieces;
-    diagonal_pawn_attacks_right = ((pawns & ~FILE[7]) << 7) & enemy_pieces;
+    diagonal_pawn_attacks_left = ((pawns & ~COLUMN[7]) << 9) & enemy_pieces;
+    diagonal_pawn_attacks_right = ((pawns & ~COLUMN[0]) << 7) & enemy_pieces;
   } else {
-    diagonal_pawn_attacks_left = ((pawns & ~FILE[7]) >> 9) & enemy_pieces;
-    diagonal_pawn_attacks_right = ((pawns & ~FILE[0]) >> 7) & enemy_pieces;
+    diagonal_pawn_attacks_left = ((pawns & ~COLUMN[0]) >> 9) & enemy_pieces;
+    diagonal_pawn_attacks_right = ((pawns & ~COLUMN[7]) >> 7) & enemy_pieces;
   }
-  index = get_first_index(diagonal_pawn_attacks_left);
+  index = __builtin_ctzll(diagonal_pawn_attacks_left);
   while (diagonal_pawn_attacks_left) {
-    if (index < 56) {
-      moveList[moveIndex++] =
-          turn ? ENCODE_MOVE(index, index - 9, 0, 0)
-               : ENCODE_MOVE(63 - index, 63 - (index - 9), 0, 0);
+    bool is_promotion = turn ? (index > 55) : (index < 8);
+    if (!is_promotion) {
+      moveList[moveIndex++] = turn ? ENCODE_MOVE(index, index - 9, 0, 0)
+                                   : ENCODE_MOVE(index, index + 9, 0, 0);
     } else {
       for (int i = 1; i <= 4; i++) {
-        moveList[moveIndex++] =
-            turn ? ENCODE_MOVE(index, index - 9, 0, i)
-                 : ENCODE_MOVE(63 - index, 63 - (index - 9), 0, i);
+        moveList[moveIndex++] = turn ? ENCODE_MOVE(index, index - 9, 0, i)
+                                     : ENCODE_MOVE(index, index + 9, 0, i);
       }
     }
     clear_piece(diagonal_pawn_attacks_left, index);
-    index = get_first_index(diagonal_pawn_attacks_left);
+    index = __builtin_ctzll(diagonal_pawn_attacks_left);
   }
-  index = get_first_index(diagonal_pawn_attacks_right);
+  index = __builtin_ctzll(diagonal_pawn_attacks_right);
   while (diagonal_pawn_attacks_right) {
-    if (index < 56) {
-      moveList[moveIndex++] =
-          turn ? ENCODE_MOVE(index, index - 7, 0, 0)
-               : ENCODE_MOVE(63 - index, 63 - (index - 7), 0, 0);
+    bool is_promotion = turn ? (index >= 56) : (index < 8);
+    if (!is_promotion) {
+      moveList[moveIndex++] = turn ? ENCODE_MOVE(index, index - 7, 0, 0)
+                                   : ENCODE_MOVE(index, index + 7, 0, 0);
     } else {
       for (int i = 1; i <= 4; i++) {
-        moveList[moveIndex++] =
-            turn ? ENCODE_MOVE(index, index - 7, 0, i)
-                 : ENCODE_MOVE(63 - index, 63 - (index - 7), 0, i);
+        moveList[moveIndex++] = turn ? ENCODE_MOVE(index, index - 7, 0, i)
+                                     : ENCODE_MOVE(index, index + 7, 0, i);
       }
     }
     clear_piece(diagonal_pawn_attacks_right, index);
-    index = get_first_index(diagonal_pawn_attacks_right);
+    index = __builtin_ctzll(diagonal_pawn_attacks_right);
   }
+
+  // EN_PASSANT
   int previous_move_to = static_cast<int>(GET_TO_SQUARE(previous_move));
   int previous_move_from = static_cast<int>(GET_FROM_SQUARE(previous_move));
   uint64_t last_piece_position = 1ULL << previous_move_to;
   if ((last_piece_position & enemy_pawns) &&
       (abs(previous_move_to - previous_move_from) == 16)) {
-    if (((last_piece_position & ~FILE[7]) << 1) & pawns) {
+    if (((last_piece_position & ~COLUMN[7]) << 1) & pawns) {
       moveList[moveIndex++] = ENCODE_MOVE(previous_move_to + (turn ? 8 : -8),
                                           previous_move_to + 1, 1, 0);
     }
-    if (((last_piece_position & ~FILE[0]) >> 1) & pawns) {
+    if (((last_piece_position & ~COLUMN[0]) >> 1) & pawns) {
       moveList[moveIndex++] = ENCODE_MOVE(previous_move_to + (turn ? 8 : -8),
                                           previous_move_to - 1, 1, 0);
     }
@@ -421,7 +424,7 @@ uint16_t Board::generateLegalMoves(Move moveList[MAX_MOVES]) {
   while (straight_pieces) {
     index = __builtin_ctzll(straight_pieces);
     uint16_t key = _pext_u64(friendly_pieces | enemy_pieces,
-                             FILE[index % 8] ^ RANK[index / 8]);
+                             COLUMN[index % 8] ^ RANK[index / 8]);
     uint64_t attack_bitboard = STRAIGHT_ATTACKS[index][key];
     attack_bitboard &= ~friendly_pieces;
     while (attack_bitboard) {
@@ -434,6 +437,9 @@ uint16_t Board::generateLegalMoves(Move moveList[MAX_MOVES]) {
 
   // Generating King Moves
   uint8_t king_square = __builtin_ctzll(king);
+  if (king == 0) {
+    return 0;
+  }
   uint64_t king_attacks = KING_ATTACKS[king_square] & ~friendly_pieces;
   while (king_attacks) {
     index = __builtin_ctzll(king_attacks);
@@ -457,6 +463,7 @@ uint16_t Board::generateLegalMoves(Move moveList[MAX_MOVES]) {
       castle_state[turn] == CASTLE_LONG_NO_SHORT) {
     if (!(board_layout & (1ULL << (king_square + 1))) &&
         !(board_layout & (1ULL << (king_square + 2))) &&
+        !(board_layout & (1ULL << (king_square + 3))) &&
         !(is_square_attacked(board_layout, king_square + 1) ||
           is_square_attacked(board_layout, king_square + 2) ||
           is_square_attacked(board_layout, king_square))) {
@@ -465,11 +472,14 @@ uint16_t Board::generateLegalMoves(Move moveList[MAX_MOVES]) {
   }
 
   uint16_t final_index = 0;
+  uint8_t original_king_square = king_square;
+
   for (int i = 0; i < moveIndex; ++i) {
     uint8_t to_square = GET_TO_SQUARE(moveList[i]);
     uint8_t from_square = GET_FROM_SQUARE(moveList[i]);
     uint8_t en_passant_flag = GET_EN_PASSANT_FLAG(moveList[i]);
     uint64_t bitboard = friendly_pieces | enemy_pieces;
+    // temporarily set king square before calling is_square_attacked.
     if (king & (1ULL << from_square)) {
       king_square = to_square;
     }
@@ -478,11 +488,21 @@ uint16_t Board::generateLegalMoves(Move moveList[MAX_MOVES]) {
     if (en_passant_flag) {
       bitboard &= ~(1ULL << (to_square + (turn ? -8 : 8)));
     }
+    uint8_t piece = piece_locations[to_square];
+    uint64_t capture = 0;
+    if (piece != 0) {
+      capture = *piece_map[piece][ENEMY] & (1ULL << to_square);
+      *piece_map[piece][ENEMY] &= ~capture;
+    }
     uint64_t isAttacked = is_square_attacked(bitboard, king_square);
     if (!isAttacked) {
       moveList[final_index] = moveList[i];
       final_index++;
     }
+    if (capture) {
+      *piece_map[piece][ENEMY] |= capture;
+    }
+    king_square = original_king_square;
   }
   return final_index;
 }
@@ -494,25 +514,23 @@ uint16_t Board::generateCaptureMoves(Move moveList[MAX_MOVES]) {
   uint64_t diagonal_pawn_attacks_left = 0;
   uint64_t diagonal_pawn_attacks_right = 0;
   if (turn) {
-    diagonal_pawn_attacks_left = ((pawns & ~FILE[0]) << 9) & enemy_pieces;
-    diagonal_pawn_attacks_right = ((pawns & ~FILE[7]) << 7) & enemy_pieces;
+    diagonal_pawn_attacks_left = ((pawns & ~COLUMN[7]) << 9) & enemy_pieces;
+    diagonal_pawn_attacks_right = ((pawns & ~COLUMN[0]) << 7) & enemy_pieces;
   } else {
-    diagonal_pawn_attacks_left = ((pawns & ~FILE[7]) >> 9) & enemy_pieces;
-    diagonal_pawn_attacks_right = ((pawns & ~FILE[0]) >> 7) & enemy_pieces;
+    diagonal_pawn_attacks_left = ((pawns & ~COLUMN[0]) >> 9) & enemy_pieces;
+    diagonal_pawn_attacks_right = ((pawns & ~COLUMN[7]) >> 7) & enemy_pieces;
   }
-
   uint8_t index = __builtin_ctzll(diagonal_pawn_attacks_left);
   while (diagonal_pawn_attacks_left) {
-    if (index < 56) {
-      moveList[moveIndex++] =
-          turn ? ENCODE_MOVE(index, index - 9, 0, 0)
-               : ENCODE_MOVE(63 - index, 63 - (index - 9), 0, 0);
+    bool is_promotion = turn ? (index >= 56) : (index < 8);
+    if (!is_promotion) {
+      moveList[moveIndex++] = turn ? ENCODE_MOVE(index, index - 9, 0, 0)
+                                   : ENCODE_MOVE(index, index + 9, 0, 0);
     } else {
       // Capture promotions
       for (int i = 1; i <= 4; i++) {
-        moveList[moveIndex++] =
-            turn ? ENCODE_MOVE(index, index - 9, 0, i)
-                 : ENCODE_MOVE(63 - index, 63 - (index - 9), 0, i);
+        moveList[moveIndex++] = turn ? ENCODE_MOVE(index, index - 9, 0, i)
+                                     : ENCODE_MOVE(index, index + 9, 0, i);
       }
     }
     diagonal_pawn_attacks_left &= diagonal_pawn_attacks_left - 1;
@@ -521,38 +539,35 @@ uint16_t Board::generateCaptureMoves(Move moveList[MAX_MOVES]) {
 
   index = __builtin_ctzll(diagonal_pawn_attacks_right);
   while (diagonal_pawn_attacks_right) {
-    if (index < 56) {
-      moveList[moveIndex++] =
-          turn ? ENCODE_MOVE(index, index - 7, 0, 0)
-               : ENCODE_MOVE(63 - index, 63 - (index - 7), 0, 0);
+    bool is_promotion = turn ? (index >= 56) : (index < 8);
+    if (!is_promotion) {
+      moveList[moveIndex++] = turn ? ENCODE_MOVE(index, index - 7, 0, 0)
+                                   : ENCODE_MOVE(index, index + 7, 0, 0);
     } else {
       // Capture promotions
       for (int i = 1; i <= 4; i++) {
-        moveList[moveIndex++] =
-            turn ? ENCODE_MOVE(index, index - 7, 0, i)
-                 : ENCODE_MOVE(63 - index, 63 - (index - 7), 0, i);
+        moveList[moveIndex++] = turn ? ENCODE_MOVE(index, index - 7, 0, i)
+                                     : ENCODE_MOVE(index, index + 7, 0, i);
       }
     }
     diagonal_pawn_attacks_right &= diagonal_pawn_attacks_right - 1;
     index = __builtin_ctzll(diagonal_pawn_attacks_right);
   }
-
   // En passant captures
   int previous_move_to = static_cast<int>(GET_TO_SQUARE(previous_move));
   int previous_move_from = static_cast<int>(GET_FROM_SQUARE(previous_move));
   uint64_t last_piece_position = 1ULL << previous_move_to;
   if ((last_piece_position & enemy_pawns) &&
       (abs(previous_move_to - previous_move_from) == 16)) {
-    if (((last_piece_position & ~FILE[7]) << 1) & pawns) {
+    if (((last_piece_position & ~COLUMN[7]) << 1) & pawns) {
       moveList[moveIndex++] = ENCODE_MOVE(previous_move_to + (turn ? 8 : -8),
                                           previous_move_to + 1, 1, 0);
     }
-    if (((last_piece_position & ~FILE[0]) >> 1) & pawns) {
+    if (((last_piece_position & ~COLUMN[0]) >> 1) & pawns) {
       moveList[moveIndex++] = ENCODE_MOVE(previous_move_to + (turn ? 8 : -8),
                                           previous_move_to - 1, 1, 0);
     }
   }
-
   // Knight captures only
   uint64_t temp_knights = knights;
   while (temp_knights) {
@@ -585,7 +600,7 @@ uint16_t Board::generateCaptureMoves(Move moveList[MAX_MOVES]) {
   while (straight_pieces) {
     index = __builtin_ctzll(straight_pieces);
     uint16_t key = _pext_u64(friendly_pieces | enemy_pieces,
-                             FILE[index % 8] ^ RANK[index / 8]);
+                             COLUMN[index % 8] ^ RANK[index / 8]);
     uint64_t attack_bitboard = STRAIGHT_ATTACKS[index][key] & enemy_pieces;
     while (attack_bitboard) {
       uint8_t temp_index = __builtin_ctzll(attack_bitboard);
@@ -606,28 +621,37 @@ uint16_t Board::generateCaptureMoves(Move moveList[MAX_MOVES]) {
 
   // Filter illegal moves (king safety check)
   uint16_t final_index = 0;
+  uint8_t original_king_square = king_square;
   for (int i = 0; i < moveIndex; ++i) {
     uint8_t to_square = GET_TO_SQUARE(moveList[i]);
     uint8_t from_square = GET_FROM_SQUARE(moveList[i]);
     uint8_t en_passant_flag = GET_EN_PASSANT_FLAG(moveList[i]);
     uint64_t bitboard = friendly_pieces | enemy_pieces;
-
-    uint8_t temp_king_square = king_square;
+    // temporarily set king square before calling is_square_attacked.
     if (king & (1ULL << from_square)) {
-      temp_king_square = to_square;
+      king_square = to_square;
     }
-
     bitboard &= ~(1ULL << from_square);
     bitboard |= (1ULL << to_square);
     if (en_passant_flag) {
       bitboard &= ~(1ULL << (to_square + (turn ? -8 : 8)));
     }
-
-    if (!is_square_attacked(bitboard, temp_king_square)) {
-      moveList[final_index++] = moveList[i];
+    uint8_t piece = piece_locations[to_square];
+    uint64_t capture = 0;
+    if (piece != 0) {
+      capture = *piece_map[piece][ENEMY] & (1ULL << to_square);
+      *piece_map[piece][ENEMY] &= ~capture;
     }
+    uint64_t isAttacked = is_square_attacked(bitboard, king_square);
+    if (!isAttacked) {
+      moveList[final_index] = moveList[i];
+      final_index++;
+    }
+    if (capture) {
+      *piece_map[piece][ENEMY] |= capture;
+    }
+    king_square = original_king_square;
   }
-
   return final_index;
 }
 
@@ -669,4 +693,25 @@ bool Board::operator==(Board other_board) {
                 turn_equal && previous_move_equal && piece_location_map_equal &&
                 castling_states_equal;
   return result;
+}
+
+void Board::printBoard() {
+  const char *pieces = ".PNBRQK";
+  printf("\n  a b c d e f g h\n");
+  for (int rank = 7; rank >= 0; rank--) {
+    printf("%d ", rank + 1);
+    for (int file = 7; file >= 0; file--) {
+      int sq = rank * 8 + file;
+      char c = '.';
+      if (friendly_pieces & (1ULL << sq)) {
+        c = pieces[piece_locations[sq]];
+      } else if (enemy_pieces & (1ULL << sq)) {
+        c = tolower(pieces[piece_locations[sq]]);
+      }
+      printf("%c ", c);
+    }
+    printf("%d\n", rank + 1);
+  }
+  printf("  a b c d e f g h\n");
+  printf("Turn: %s\n\n", turn ? "White" : "Black");
 }

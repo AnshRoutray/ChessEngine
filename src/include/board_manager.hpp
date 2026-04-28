@@ -42,6 +42,7 @@ class Board {
 public:
   uint16_t generateLegalMoves(Move moveList[MAX_MOVES]);
   uint16_t generateCaptureMoves(Move moveList[MAX_MOVES]);
+  void printBoard();
   UndoInfo playMove(Move move);
   bool is_square_attacked(uint64_t bitboard, uint8_t square);
   bool is_square_attacked() {
@@ -57,7 +58,6 @@ public:
         uint64_t enemy_queen, uint64_t enemy_king, uint8_t castle_state[2],
         uint8_t turn, Move previous_move);
 
-private:
   uint64_t pawns;
   uint64_t knights;
   uint64_t bishops;
