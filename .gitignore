@@ -4,3 +4,7 @@ build_debug/
 .clangd
 compile_commands.json
 .cache
+*.o 
+*.a 
+*.so 
+cmake-build-*/
