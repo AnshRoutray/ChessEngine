@@ -61,7 +61,7 @@ The evaluation function uses material values and piece-square tables. Each piece
 
 ```bash
 mkdir build && cd build
-cmake -DCMAKE_BUILD_TYPE=Release .. && cd ..
+cmake -DCMAKE_BUILD_TYPE=Release ..
 cmake --build .
 
 Requires a CPU with BMI2 support for PEXT instructions. Compile with `-mbmi2 -O2` or higher.
