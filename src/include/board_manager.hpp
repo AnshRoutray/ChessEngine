@@ -36,7 +36,13 @@ struct UndoInfo {
   Move previous_previous_move;
   uint8_t previous_castle_state[2];
   uint8_t captured_piece;
+  uint64_t previous_zobrist_hash;
 };
+
+extern uint64_t ZOBRIST_VALUES[2][7][64];
+extern uint64_t ZOBRIST_TURN;
+extern uint64_t ZOBRIST_CASTLE[2][4];
+extern uint64_t ZOBRIST_EP_FILE[8];
 
 class Board {
 public:
@@ -82,8 +88,11 @@ public:
   uint8_t piece_locations[64];
   uint64_t *piece_map[7][2];
 
+  uint64_t zobrist_hash;
+
   inline uint8_t get_first_index(uint64_t bitboard);
   inline uint64_t shift_piece(uint64_t bitboard, int places);
   inline void clear_piece(uint64_t &bitboard, uint8_t index);
-  void init_piece_locations();
+  void init_piece_locations_and_hash();
+  void init_zobrist_hashes();
 };

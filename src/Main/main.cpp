@@ -1,3 +1,5 @@
+#pragma once
+
 #include "board_manager.hpp"
 #include "evaluate.hpp"
 #include "move_encoding.hpp"
@@ -81,8 +83,27 @@ uint64_t perft(Board *board) {
 
 int main() {
   Board board;
-  Move bestMove = retrieveBestMove(&board, 7);
-  cout << (int)GET_FROM_SQUARE(bestMove) << endl;
-  cout << (int)GET_TO_SQUARE(bestMove) << endl;
+
+  // Calculate raw nodes at depth 9 (no pruning)
+  uint64_t raw_nodes = 2439530234167;
+  uint8_t DEPTH = 9;
+  auto start = std::chrono::high_resolution_clock::now();
+  Move bestMove = retrieveBestMove(&board, DEPTH);
+  auto end = std::chrono::high_resolution_clock::now();
+
+  double elapsed = std::chrono::duration<double>(end - start).count();
+
+  cout << "===========================================" << endl;
+  cout << "           Chess Engine Search Stats           " << endl;
+  cout << "===========================================" << endl;
+  cout << "Depth searched:       " << DEPTH << endl;
+  cout << "Time taken:           " << elapsed << " seconds" << endl;
+  cout << "Number of raw positions:  " << raw_nodes << " (~" << raw_nodes / 1e12
+       << "Trillion)" << endl;
+  cout << "Best move:            "
+       << square_to_algebraic(GET_FROM_SQUARE(bestMove))
+       << square_to_algebraic(GET_TO_SQUARE(bestMove)) << endl;
+  cout << "===========================================" << endl;
+
   return 0;
 }
