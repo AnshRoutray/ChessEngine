@@ -12,7 +12,7 @@ uint64_t ZOBRIST_TURN;
 uint64_t ZOBRIST_CASTLE[2][4];
 uint64_t ZOBRIST_EP_FILE[8];
 
-void Board::init_zobrist_hashes() {
+void init_zobrist_hashes() {
   static std::mt19937_64 rng(634242517);
   for (int color = 0; color < 2; color++) {
     for (int piece = PAWN_PIECE; piece < 7; piece++) {
@@ -32,6 +32,12 @@ void Board::init_zobrist_hashes() {
   }
 }
 
+void init_engine_tables() {
+  init_zobrist_hashes();
+  init_diagonal_attack_lookup_table();
+  init_straight_attack_lookup_table();
+}
+
 Board::Board()
     : pawns{WHITE_PAWN_INIT}, knights{WHITE_KNIGHT_INIT},
       bishops{WHITE_BISHOP_INIT}, rooks{WHITE_ROOK_INIT},
@@ -45,9 +51,6 @@ Board::Board()
                  enemy_rooks | enemy_king;
   castle_state[0] = CASTLE_SHORT_AND_LONG;
   castle_state[1] = CASTLE_SHORT_AND_LONG;
-  init_zobrist_hashes();
-  init_diagonal_attack_lookup_table();
-  init_straight_attack_lookup_table();
   init_piece_locations_and_hash();
 }
 
@@ -65,9 +68,6 @@ Board::Board(uint64_t pawns, uint64_t knights, uint64_t bishops, uint64_t rooks,
   friendly_pieces = pawns | knights | bishops | rooks | queen | king;
   enemy_pieces = enemy_pawns | enemy_knights | enemy_bishops | enemy_rooks |
                  enemy_queen | enemy_king;
-  init_zobrist_hashes();
-  init_diagonal_attack_lookup_table();
-  init_straight_attack_lookup_table();
   init_piece_locations_and_hash();
 }
 

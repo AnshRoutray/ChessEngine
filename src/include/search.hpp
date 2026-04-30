@@ -5,6 +5,7 @@
 
 constexpr int16_t INF = INT16_MAX;
 constexpr uint8_t MAX_CAPTURE_MOVES = 218;
+constexpr uint8_t MAX_DEPTH = 40;
 
 constexpr int TT_SIZE = 1 << 25;
 

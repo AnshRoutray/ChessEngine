@@ -44,6 +44,9 @@ extern uint64_t ZOBRIST_TURN;
 extern uint64_t ZOBRIST_CASTLE[2][4];
 extern uint64_t ZOBRIST_EP_FILE[8];
 
+void init_zobrist_hashes();
+void init_engine_tables();
+
 class Board {
 public:
   uint16_t generateLegalMoves(Move moveList[MAX_MOVES]);
@@ -94,5 +97,4 @@ public:
   inline uint64_t shift_piece(uint64_t bitboard, int places);
   inline void clear_piece(uint64_t &bitboard, uint8_t index);
   void init_piece_locations_and_hash();
-  void init_zobrist_hashes();
 };

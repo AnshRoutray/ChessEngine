@@ -10,6 +10,7 @@ uint64_t convert_square_to_bitboard(uint8_t square1, uint8_t square2,
 }
 
 int main() {
+  init_engine_tables();
   // Test 0 initial positions
 
   {

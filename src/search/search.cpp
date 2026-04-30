@@ -7,6 +7,8 @@
 #include <iostream>
 
 TT_Entry TT_TABLE[TT_SIZE];
+thread_local Move moveList[MAX_DEPTH][MAX_MOVES];
+thread_local std::pair<Move, int16_t> newMoveList[MAX_DEPTH][MAX_MOVES];
 
 Move retrieveBestMove(Board *board, uint8_t max_depth) {
   Move best_move = 0;
@@ -17,8 +19,7 @@ Move retrieveBestMove(Board *board, uint8_t max_depth) {
 }
 
 Move retrieveBestMoveAtDepth(Board *board, uint8_t depth) {
-  Move moveList[MAX_MOVES];
-  uint16_t total_moves = board->generateLegalMoves(moveList);
+  uint16_t total_moves = board->generateLegalMoves(moveList[depth]);
   if (total_moves == 0) {
     if (board->is_square_attacked()) {
       return 0xFFFF;
@@ -29,7 +30,7 @@ Move retrieveBestMoveAtDepth(Board *board, uint8_t depth) {
   int16_t max_score = -INF;
   uint16_t best_move = 0;
   for (uint16_t move = 0; move < total_moves; ++move) {
-    UndoInfo undo_info = board->playMove(moveList[move]);
+    UndoInfo undo_info = board->playMove(moveList[depth][move]);
     int16_t score = (depth == 0) ? -stableSearch(board, -INF, INF)
                                  : -searchBestMove(board, depth - 1, -INF, INF);
     board->undoMove(undo_info);
@@ -38,13 +39,13 @@ Move retrieveBestMoveAtDepth(Board *board, uint8_t depth) {
       best_move = move;
     }
   }
-  return moveList[best_move];
+  return moveList[depth][best_move];
 }
 
 int16_t searchBestMove(Board *board, uint8_t depth, int16_t alpha,
                        int16_t beta) {
   uint64_t zobrist_hash = board->zobrist_hash;
-  TT_Entry tt_value = TT_TABLE[zobrist_hash % TT_SIZE];
+  TT_Entry tt_value = TT_TABLE[zobrist_hash & (TT_SIZE - 1)];
   bool use_TT_best_move = false;
   if (tt_value.zobrist_hash == zobrist_hash) {
     if (tt_value.depth >= depth) {
@@ -62,8 +63,7 @@ int16_t searchBestMove(Board *board, uint8_t depth, int16_t alpha,
     }
     use_TT_best_move = true;
   }
-  Move moveList[MAX_MOVES];
-  uint16_t total_moves = board->generateLegalMoves(moveList);
+  uint16_t total_moves = board->generateLegalMoves(moveList[depth]);
   if (total_moves == 0) {
     if (board->is_square_attacked()) {
       return -(30000 - depth);
@@ -72,29 +72,35 @@ int16_t searchBestMove(Board *board, uint8_t depth, int16_t alpha,
     }
   }
   int16_t original_alpha = alpha;
-  std::sort(moveList, moveList + total_moves,
-            [board, tt_value, use_TT_best_move](Move a, Move b) {
-              if (use_TT_best_move &&
-                  (a == tt_value.best_move || b == tt_value.best_move)) {
-                return a == tt_value.best_move;
+  for (int i = 0; i < total_moves; i++) {
+    newMoveList[depth][i] = {moveList[depth][i],
+                             mvv_lva_heuristic(board, moveList[depth][i])};
+  }
+  std::sort(newMoveList[depth], newMoveList[depth] + total_moves,
+            [board, tt_value, use_TT_best_move](std::pair<Move, int16_t> a,
+                                                std::pair<Move, int16_t> b) {
+              if (use_TT_best_move && (a.first == tt_value.best_move ||
+                                       b.first == tt_value.best_move)) {
+                return a.first == tt_value.best_move;
               }
-              return mvv_lva_heuristic(board, a) > mvv_lva_heuristic(board, b);
+              return a.second > b.second;
             });
-  Move best_move = moveList[0];
+  Move best_move = newMoveList[depth][0].first;
   int16_t current_score = -INF;
   for (uint16_t move = 0; move < total_moves; ++move) {
-    UndoInfo undo_info = board->playMove(moveList[move]);
+    UndoInfo undo_info = board->playMove(newMoveList[depth][move].first);
     int16_t score = (depth == 0)
                         ? -stableSearch(board, -beta, -alpha)
                         : -searchBestMove(board, depth - 1, -beta, -alpha);
     board->undoMove(undo_info);
     if (score >= beta) {
-      TT_Entry entry = {depth, AT_LEAST, moveList[move], beta, zobrist_hash};
-      TT_TABLE[zobrist_hash % TT_SIZE] = entry;
+      TT_Entry entry = {depth, AT_LEAST, newMoveList[depth][move].first, beta,
+                        zobrist_hash};
+      TT_TABLE[zobrist_hash & (TT_SIZE - 1)] = entry;
       return beta;
     }
     if (score > current_score) {
-      best_move = moveList[move];
+      best_move = newMoveList[depth][move].first;
       current_score = score;
     }
     alpha = std::max<int16_t>(alpha,
@@ -107,21 +113,22 @@ int16_t searchBestMove(Board *board, uint8_t depth, int16_t alpha,
 }
 
 int16_t stableSearch(Board *board, int16_t alpha, int16_t beta) {
-  Move moveList[MAX_CAPTURE_MOVES];
+  Move captureMoveList[MAX_CAPTURE_MOVES];
   int16_t evaluation = evaluate(board);
   if (evaluation >= beta) {
     return evaluation;
   }
   alpha = std::max<int16_t>(alpha, evaluation);
-  uint16_t total_moves = board->generateCaptureMoves(moveList);
+  uint16_t total_moves = board->generateCaptureMoves(captureMoveList);
   if (total_moves == 0) {
     return evaluation;
   }
-  std::sort(moveList, moveList + total_moves, [board](Move a, Move b) {
-    return mvv_lva_heuristic(board, a) > mvv_lva_heuristic(board, b);
-  });
+  std::sort(captureMoveList, captureMoveList + total_moves,
+            [board](Move a, Move b) {
+              return mvv_lva_heuristic(board, a) > mvv_lva_heuristic(board, b);
+            });
   for (uint8_t move = 0; move < total_moves; ++move) {
-    UndoInfo undo_info = board->playMove(moveList[move]);
+    UndoInfo undo_info = board->playMove(captureMoveList[move]);
     evaluation = -stableSearch(board, -beta, -alpha);
     board->undoMove(undo_info);
     if (evaluation >= beta) {

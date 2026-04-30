@@ -82,11 +82,12 @@ uint64_t perft(Board *board) {
 }
 
 int main() {
+  init_engine_tables();
   Board board;
 
   // Calculate raw nodes at depth 9 (no pruning)
   uint64_t raw_nodes = 2439530234167;
-  uint8_t DEPTH = 9;
+  uint8_t DEPTH = 7;
   auto start = std::chrono::high_resolution_clock::now();
   Move bestMove = retrieveBestMove(&board, DEPTH);
   auto end = std::chrono::high_resolution_clock::now();
@@ -96,7 +97,7 @@ int main() {
   cout << "===========================================" << endl;
   cout << "           Chess Engine Search Stats           " << endl;
   cout << "===========================================" << endl;
-  cout << "Depth searched:       " << DEPTH << endl;
+  cout << "Depth searched:       " << (int)DEPTH << endl;
   cout << "Time taken:           " << elapsed << " seconds" << endl;
   cout << "Number of raw positions:  " << raw_nodes << " (~" << raw_nodes / 1e12
        << "Trillion)" << endl;
