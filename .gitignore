@@ -29,3 +29,4 @@ cmake_install.cmake
 Makefile
 # Python venv
 .venv/
+perf.data
