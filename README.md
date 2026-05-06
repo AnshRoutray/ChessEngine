@@ -36,6 +36,14 @@ Move ordering uses MVV-LVA (Most Valuable Victim, Least Valuable Attacker) to pr
 
 MVV-LVA produced a 2.6x speedup at depth 5, measured from the starting position. At depth 7 the speedup was 5.4x, consistent with the expected compounding effect of better alpha-beta pruning at greater depth.
 
+### Transposition Tables
+
+I added a table that caches recently evaluated positions to improve the speed of the search by eliminating already searched position. However, if the position has been searched at an equal or higher depth then the cached value is simply returned by the search function, otherwise, the cached data is used in move ordering to further improve the effectiveness of Alpha Beta Pruning.
+
+### Iterative Deepening
+
+Iterative deepending searches the game tree at all depths before the target depth to populate the cache with valuable information. This is shown to be more efficient because the time it takes to search depths 1 ... n - 1 is negligible compared to searching at depth n.
+
 ### Evaluation
 
 The evaluation function uses material values and piece-square tables. Each piece type has a 64-entry table encoding positional bonuses and penalties, encouraging central control, piece development, and king safety at a basic level.
@@ -51,8 +59,6 @@ The evaluation function uses material values and piece-square tables. Each piece
 
 ## Planned Work
 
-- Transposition table with Zobrist hashing
-- Iterative deepening
 - SIMD vectorization of evaluation (AVX2)
 - Parallel search with OpenMP
 - Distributed search over RDMA

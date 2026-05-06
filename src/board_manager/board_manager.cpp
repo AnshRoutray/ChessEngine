@@ -1,4 +1,5 @@
 #include "board_manager.hpp"
+#include "evaluate.hpp"
 #include "lookup_tables.hpp"
 #include "move_encoding.hpp"
 #include <cmath>
@@ -36,6 +37,7 @@ void init_engine_tables() {
   init_zobrist_hashes();
   init_diagonal_attack_lookup_table();
   init_straight_attack_lookup_table();
+  init_eval_tables();
 }
 
 Board::Board()
@@ -215,8 +217,7 @@ UndoInfo Board::playMove(Move move) {
   {
     int prev_to = GET_TO_SQUARE(previous_move);
     int prev_from = GET_FROM_SQUARE(previous_move);
-    if ((enemy_pawns & (1ULL << prev_to)) &&
-        abs(prev_to - prev_from) == 16) {
+    if ((enemy_pawns & (1ULL << prev_to)) && abs(prev_to - prev_from) == 16) {
       zobrist_hash ^= ZOBRIST_EP_FILE[prev_to % 8];
     }
   }

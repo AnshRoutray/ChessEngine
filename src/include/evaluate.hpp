@@ -5,3 +5,4 @@
 
 int16_t evaluate(Board *board);
 int16_t mvv_lva_heuristic(Board *board, Move move);
+void init_eval_tables();

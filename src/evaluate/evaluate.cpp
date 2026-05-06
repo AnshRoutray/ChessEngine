@@ -79,20 +79,36 @@ static constexpr int16_t KING_PST[64] = {
     -50, -40, -40, -30, -30, -40, -40, -50, -50, -40, -40, -30,
 };
 
+// Combined PST + Material
+
+static int16_t COMBINED_PST[7][64];
+
 // ---------------------------------------------------------------------------
 // Score accumulation: iterate set bits, add material + PST
 // ---------------------------------------------------------------------------
 
-// Mirror square for black pieces (flip rank)
+// Precompute combined material and PST lookup tables
+
+void init_eval_tables() {
+  const int16_t *pst_tables[7] = {nullptr,  PAWN_PST,  KNIGHT_PST, BISHOP_PST,
+                                  ROOK_PST, QUEEN_PST, KING_PST};
+  for (int piece = PAWN_PIECE; piece <= KING_PIECE; piece++) {
+    for (int sq = 0; sq < 64; sq++) {
+      COMBINED_PST[piece][sq] = PIECE_VAL[piece] + pst_tables[piece][sq];
+    }
+  }
+}
+
+// Mirror square for enemy pieces (flip rank)
 static inline uint8_t mirror(uint8_t sq) { return sq ^ 56; }
 
-static inline int16_t score_pieces(uint64_t bb, int16_t material,
-                                   const int16_t pst[64], bool is_enemy) {
+static inline int16_t score_pieces(uint64_t bb, uint8_t piece_type,
+                                   bool is_enemy) {
   int16_t score = 0;
   while (bb) {
-    uint8_t sq = static_cast<uint8_t>(__builtin_ctzll(bb));
+    uint8_t sq = __builtin_ctzll(bb);
     bb &= bb - 1;
-    score += material + pst[is_enemy ? mirror(sq) : sq];
+    score += COMBINED_PST[piece_type][is_enemy ? mirror(sq) : sq];
   }
   return score;
 }
@@ -106,27 +122,20 @@ int16_t evaluate(Board *board) {
   // std::cout << "Pawns: " << board->pawns << std::endl << "Knights: " <<
   //  board->knights << std::endl;
   // Friendly pieces (positive contribution)
-  score += score_pieces(board->pawns, PIECE_VAL[PAWN_PIECE], PAWN_PST, false);
-  score +=
-      score_pieces(board->knights, PIECE_VAL[KNIGHT_PIECE], KNIGHT_PST, false);
-  score +=
-      score_pieces(board->bishops, PIECE_VAL[BISHOP_PIECE], BISHOP_PST, false);
-  score += score_pieces(board->rooks, PIECE_VAL[ROOK_PIECE], ROOK_PST, false);
-  score += score_pieces(board->queen, PIECE_VAL[QUEEN_PIECE], QUEEN_PST, false);
-  score += score_pieces(board->king, 0, KING_PST, false);
+  score += score_pieces(board->pawns, PAWN_PIECE, false);
+  score += score_pieces(board->knights, KNIGHT_PIECE, false);
+  score += score_pieces(board->bishops, BISHOP_PIECE, false);
+  score += score_pieces(board->rooks, ROOK_PIECE, false);
+  score += score_pieces(board->queen, QUEEN_PIECE, false);
+  score += score_pieces(board->king, KING_PIECE, false);
 
   // Enemy pieces (negative contribution, mirrored PST)
-  score -=
-      score_pieces(board->enemy_pawns, PIECE_VAL[PAWN_PIECE], PAWN_PST, true);
-  score -= score_pieces(board->enemy_knights, PIECE_VAL[KNIGHT_PIECE],
-                        KNIGHT_PST, true);
-  score -= score_pieces(board->enemy_bishops, PIECE_VAL[BISHOP_PIECE],
-                        BISHOP_PST, true);
-  score -=
-      score_pieces(board->enemy_rooks, PIECE_VAL[ROOK_PIECE], ROOK_PST, true);
-  score -=
-      score_pieces(board->enemy_queen, PIECE_VAL[QUEEN_PIECE], QUEEN_PST, true);
-  score -= score_pieces(board->enemy_king, 0, KING_PST, true);
+  score -= score_pieces(board->enemy_pawns, PAWN_PIECE, true);
+  score -= score_pieces(board->enemy_knights, KNIGHT_PIECE, true);
+  score -= score_pieces(board->enemy_bishops, BISHOP_PIECE, true);
+  score -= score_pieces(board->enemy_rooks, ROOK_PIECE, true);
+  score -= score_pieces(board->enemy_queen, QUEEN_PIECE, true);
+  score -= score_pieces(board->enemy_king, KING_PIECE, true);
 
   return score;
 }
