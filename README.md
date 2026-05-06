@@ -1,4 +1,4 @@
-﻿# FrostWeb
+﻿# Chess Engine
 
 A chess engine written in C++ featuring a bitboard based board representation, PEXT-based sliding piece attack generation, and a negamax search with alpha-beta pruning.
 
