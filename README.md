@@ -44,11 +44,77 @@ I added a table that caches recently evaluated positions to improve the speed of
 
 Iterative deepending searches the game tree at all depths before the target depth to populate the cache with valuable information. This is shown to be more efficient because the time it takes to search depths 1 ... n - 1 is negligible compared to searching at depth n.
 
+### Pin-Aware Legality Filter
+
+The original legality filter called is_square_attacked for every pseudo-legal move to verify the king was not left in check. Profiling showed this single function consumed 20% of total search time.
+
+Most of those calls were wasted: a move can only expose the king if (a) the moving piece is the king, (b) the move is en passant (which removes a pawn off the king's rank), or (c) the moving piece is absolutely pinned to the king. Every other move is unconditionally legal.
+
+compute_pinned_pieces() runs once per node and uses an x-ray technique on the king's sliding attacks to identify the bitboard of pinned friendly pieces, along with a one-shot is_square_attacked() check to determine whether we are in check. The legality loop then short circuits to a fast path for any move that is not pinned, not a king move, not en passant, and not in check.
+
+This dropped is_square_attacked from 20% to under 4% of search time, with compute_pinned_pieces adding only ~3%. Net result: ~30% wall-clock speedup at depth 7.
+
+### Null Move Pruning
+
+Null Move Pruning (NMP) is a forward-pruning technique. Before the normal search at a node, we let the opponent move twice in a row (a "null move" on our side) and search the resulting position at reduced depth, depth - 1 - R, where R is the reduction. If even after giving up a tempo our score is still >= beta, we assume the full-depth search would also fail high and we cut off immediately.
+
+This provided an approximately 25% speedup.
+
+### Killer Moves
+
+The transposition table provides position-specific move ordering, and MVV-LVA orders captures. Until killers, however, quiet (non-capture) moves were searched in arbitrary generation order. Since most beta cutoffs come from quiet moves at deeper depths, this was a significant gap.
+
+A killer move is a quiet move that recently caused a beta cutoff at the current depth. The intuition is that positions visited at the same ply in the search tree tend to be similar: a defensive king move that escaped a tactic in one branch often works in a sibling branch as well.
+
+With Killer moves, the time at depth 7 dropped from 3.25s (with NMP) to 1.05s which is a 3.1x improvement.
+
+### History Heuristic
+
+History is the second half of the quiet-move ordering problem. Killers track "what worked at this depth," but only the two most recent. History tracks "what has worked anywhere in the search" for every (color, from square, to square) combination, accumulated across the entire tree.
+
+In this benchmark from the starting position, the marginal speedup from history was small (1%) because killers and the TT already cover most of the quiet move ordering needs of a symmetric opening. History's larger contribution shows up under LMR, where it provides per move quality signal for reduction decisions.
+
+### Late Move Reductions
+
+With move ordering now strong, the first few moves at each node are very likely to be the best ones, and exhaustively searching the remaining moves at full depth is mostly wasted effort.
+
+LMR reduces the search depth for "late" moves, those beyond a move-index threshold, at sufficient node depth, that are quiet, not in check, and not a promotion. If the reduced search returns a score above alpha (suggesting the move might actually be good), we re-search it at full depth to get the true score.
+
+This caused the time at depth 8 to be 1.18s returning the move e2e4.
+
 ### Evaluation
 
 The evaluation function uses material values and piece-square tables. Each piece type has a 64-entry table encoding positional bonuses and penalties, encouraging central control, piece development, and king safety at a basic level.
 
+The evaluation is incremental: `play/undoMove` maintain a `pst_score_white` field on the Board by adding and subtracting per-piece PST contributions as pieces move, are captured, or promote. `evaluate()` is now O(1) and reduces to a single sign flip based on side-to-move. Previously, the evaluation iterated over every set bit in every piece bitboard and indexed into the PST tables for each, which was a meaningful cost given how often the leaves of the search tree call it.
+
+This refactor also fixed a latent asymmetry bug: the previous score-from-side-to-move accumulator could return different values for the same position depending on who was to move. The new accumulator stores a single absolute score from white's perspective.
+
+### Miscellaneous Optimizations
+
+A few smaller changes contributed to the overall improvement:
+
+- **One-shot table initialization.** Zobrist hash values, the diagonal and straight PEXT attack tables, and the evaluation tables were originally initialized inside the `Board` constructor. Profiling on short runs showed these initializations dominating wall-clock time. They were moved into a single `init_engine_tables()` called once in `main` instead of per `Board` instance.
+- **Quiescence MVV-LVA pre-scoring.** The quiescence sort comparator was calling `mvv_lva_heuristic` twice per comparison (once for each operand). The capture moves are now pre scored into a paired array, eliminating the double evaluation.
+- **Promotion dispatch table.** The promotion handling in `playMove` was a five-way `if/else` cascade across the four promotion piece types. It is now a small lookup table indexed by the promotion flag.
+
 ## Performance
+
+Wall-clock time for a full search from the starting position, measured on the same machine in sequence:
+
+| Stage | Depth 7 | Best move |
+|-------|---------|-----------|
+| Baseline (TT + MVV-LVA + iterative deepening) | 6.32 s | e2e4 |
+| + pin-aware legality filter | 4.44 s | e2e4 |
+| + null move pruning (R=3) | 3.25 s | e2e4 |
+| + killer moves | 1.05 s | e2e4 |
+| + history heuristic | 1.04 s | e2e4 |
+
+With LMR enabled the engine searches one ply deeper in comparable wall time:
+
+| Stage | Depth 8 | Best move |
+|-------|---------|-----------|
+| + late move reductions | 1.18 s | e2e4 |
 
 | Metric | Value |
 |--------|-------|
@@ -56,12 +122,14 @@ The evaluation function uses material values and piece-square tables. Each piece
 | 2D vector to bitboard speedup | 98.8% reduction in move generation time |
 | MVV-LVA speedup at depth 5 | 2.6x |
 | MVV-LVA speedup at depth 7 | 5.4x |
+| Full optimization stack (depth 7) | ~6x speedup over baseline |
 
 ## Planned Work
 
-- SIMD vectorization of evaluation (AVX2)
+- Neural Network evaluation over Hand Crafted.
+- SIMD Vectorization of certain parts. (Most likely in an improved NN evaluation method)
 - Parallel search with OpenMP
-- Distributed search over RDMA
+- Distributed Search over multiple computers using RDMA.
 
 ## Build
 

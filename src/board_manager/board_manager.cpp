@@ -47,7 +47,7 @@ Board::Board()
       enemy_pawns{BLACK_PAWN_INIT}, enemy_knights{BLACK_KNIGHT_INIT},
       enemy_bishops{BLACK_BISHOP_INIT}, enemy_rooks{BLACK_ROOK_INIT},
       enemy_queen{BLACK_QUEEN_INIT}, enemy_king{BLACK_KING_INIT},
-      turn{WHITE_TURN}, previous_move{0}, zobrist_hash(0) {
+      turn{WHITE_TURN}, previous_move{0}, zobrist_hash(0), pst_score_white(0) {
   friendly_pieces = pawns | knights | bishops | rooks | queen | king;
   enemy_pieces = enemy_pawns | enemy_knights | enemy_bishops | enemy_queen |
                  enemy_rooks | enemy_king;
@@ -66,7 +66,8 @@ Board::Board(uint64_t pawns, uint64_t knights, uint64_t bishops, uint64_t rooks,
       enemy_knights(enemy_knights), enemy_bishops(enemy_bishops),
       enemy_rooks(enemy_rooks), enemy_queen(enemy_queen),
       enemy_king(enemy_king), castle_state{castle_state[0], castle_state[1]},
-      turn(turn), previous_move(previous_move), zobrist_hash(0) {
+      turn(turn), previous_move(previous_move), zobrist_hash(0),
+      pst_score_white(0) {
   friendly_pieces = pawns | knights | bishops | rooks | queen | king;
   enemy_pieces = enemy_pawns | enemy_knights | enemy_bishops | enemy_rooks |
                  enemy_queen | enemy_king;
@@ -89,12 +90,15 @@ void Board::init_piece_locations_and_hash() {
   for (uint8_t i = 0; i < 64; i++) {
     piece_locations[i] = EMPTY_PIECE;
   }
+  pst_score_white = 0;
   uint64_t bitboard = pawns | enemy_pawns;
   uint8_t index = 0;
   while (bitboard != 0) {
     index = __builtin_ctzll(bitboard);
     bool friend_or_enemy = (bool)(enemy_pawns & (1ULL << index));
-    zobrist_hash ^= ZOBRIST_VALUES[turn ^ friend_or_enemy][PAWN_PIECE][index];
+    uint8_t color = turn ^ friend_or_enemy;
+    zobrist_hash ^= ZOBRIST_VALUES[color][PAWN_PIECE][index];
+    pst_score_white += pst_white_contribution(color, PAWN_PIECE, index);
     piece_locations[index] = PAWN_PIECE;
     bitboard &= (bitboard - 1);
   }
@@ -103,7 +107,9 @@ void Board::init_piece_locations_and_hash() {
   while (bitboard != 0) {
     index = __builtin_ctzll(bitboard);
     bool friend_or_enemy = (bool)(enemy_knights & (1ULL << index));
-    zobrist_hash ^= ZOBRIST_VALUES[turn ^ friend_or_enemy][KNIGHT_PIECE][index];
+    uint8_t color = turn ^ friend_or_enemy;
+    zobrist_hash ^= ZOBRIST_VALUES[color][KNIGHT_PIECE][index];
+    pst_score_white += pst_white_contribution(color, KNIGHT_PIECE, index);
     piece_locations[index] = KNIGHT_PIECE;
     bitboard &= (bitboard - 1);
   }
@@ -112,7 +118,9 @@ void Board::init_piece_locations_and_hash() {
   while (bitboard != 0) {
     index = __builtin_ctzll(bitboard);
     bool friend_or_enemy = (bool)(enemy_bishops & (1ULL << index));
-    zobrist_hash ^= ZOBRIST_VALUES[turn ^ friend_or_enemy][BISHOP_PIECE][index];
+    uint8_t color = turn ^ friend_or_enemy;
+    zobrist_hash ^= ZOBRIST_VALUES[color][BISHOP_PIECE][index];
+    pst_score_white += pst_white_contribution(color, BISHOP_PIECE, index);
     piece_locations[index] = BISHOP_PIECE;
     bitboard &= (bitboard - 1);
   }
@@ -121,7 +129,9 @@ void Board::init_piece_locations_and_hash() {
   while (bitboard != 0) {
     index = __builtin_ctzll(bitboard);
     bool friend_or_enemy = (bool)(enemy_rooks & (1ULL << index));
-    zobrist_hash ^= ZOBRIST_VALUES[turn ^ friend_or_enemy][ROOK_PIECE][index];
+    uint8_t color = turn ^ friend_or_enemy;
+    zobrist_hash ^= ZOBRIST_VALUES[color][ROOK_PIECE][index];
+    pst_score_white += pst_white_contribution(color, ROOK_PIECE, index);
     piece_locations[index] = ROOK_PIECE;
     bitboard &= (bitboard - 1);
   }
@@ -130,7 +140,9 @@ void Board::init_piece_locations_and_hash() {
   while (bitboard != 0) {
     index = __builtin_ctzll(bitboard);
     bool friend_or_enemy = (bool)(enemy_queen & (1ULL << index));
-    zobrist_hash ^= ZOBRIST_VALUES[turn ^ friend_or_enemy][QUEEN_PIECE][index];
+    uint8_t color = turn ^ friend_or_enemy;
+    zobrist_hash ^= ZOBRIST_VALUES[color][QUEEN_PIECE][index];
+    pst_score_white += pst_white_contribution(color, QUEEN_PIECE, index);
     piece_locations[index] = QUEEN_PIECE;
     bitboard &= (bitboard - 1);
   }
@@ -139,7 +151,9 @@ void Board::init_piece_locations_and_hash() {
   while (bitboard != 0) {
     index = __builtin_ctzll(bitboard);
     bool friend_or_enemy = (bool)(enemy_king & (1ULL << index));
-    zobrist_hash ^= ZOBRIST_VALUES[turn ^ friend_or_enemy][KING_PIECE][index];
+    uint8_t color = turn ^ friend_or_enemy;
+    zobrist_hash ^= ZOBRIST_VALUES[color][KING_PIECE][index];
+    pst_score_white += pst_white_contribution(color, KING_PIECE, index);
     piece_locations[index] = KING_PIECE;
     bitboard &= (bitboard - 1);
   }
@@ -198,6 +212,46 @@ bool Board::is_square_attacked(uint64_t bitboard, uint8_t square) {
   return isAttacked != 0;
 }
 
+uint64_t Board::compute_pinned_pieces(uint8_t king_sq) {
+  uint64_t occ = friendly_pieces | enemy_pieces;
+  uint64_t straight_mask = COLUMN[king_sq % 8] ^ RANK[king_sq / 8];
+
+  uint64_t king_diag_vision =
+      DIAGONAL_ATTACKS[king_sq][_pext_u64(occ, DIAGONALS[king_sq])];
+  uint64_t king_straight_vision =
+      STRAIGHT_ATTACKS[king_sq][_pext_u64(occ, straight_mask)];
+
+  uint64_t diag_blockers = king_diag_vision & friendly_pieces;
+  uint64_t straight_blockers = king_straight_vision & friendly_pieces;
+
+  uint64_t diag_xray = DIAGONAL_ATTACKS[king_sq][_pext_u64(
+      occ ^ diag_blockers, DIAGONALS[king_sq])];
+  uint64_t straight_xray = STRAIGHT_ATTACKS[king_sq][_pext_u64(
+      occ ^ straight_blockers, straight_mask)];
+
+  uint64_t diag_pinners =
+      diag_xray & (enemy_bishops | enemy_queen) & ~king_diag_vision;
+  uint64_t straight_pinners =
+      straight_xray & (enemy_rooks | enemy_queen) & ~king_straight_vision;
+
+  uint64_t pinned = 0;
+  while (diag_pinners) {
+    uint8_t pinner_sq = __builtin_ctzll(diag_pinners);
+    uint64_t pinner_attacks = DIAGONAL_ATTACKS[pinner_sq][_pext_u64(
+        occ, DIAGONALS[pinner_sq])];
+    pinned |= pinner_attacks & diag_blockers;
+    diag_pinners &= diag_pinners - 1;
+  }
+  while (straight_pinners) {
+    uint8_t pinner_sq = __builtin_ctzll(straight_pinners);
+    uint64_t pinner_attacks = STRAIGHT_ATTACKS[pinner_sq][_pext_u64(
+        occ, COLUMN[pinner_sq % 8] ^ RANK[pinner_sq / 8])];
+    pinned |= pinner_attacks & straight_blockers;
+    straight_pinners &= straight_pinners - 1;
+  }
+  return pinned;
+}
+
 UndoInfo Board::playMove(Move move) {
   int8_t to_square = static_cast<int8_t>(GET_TO_SQUARE(move));
   int8_t from_square = static_cast<int8_t>(GET_FROM_SQUARE(move));
@@ -208,7 +262,8 @@ UndoInfo Board::playMove(Move move) {
   UndoInfo info = {previous_move,
                    {castle_state[0], castle_state[1]},
                    EMPTY_PIECE,
-                   zobrist_hash};
+                   zobrist_hash,
+                   pst_score_white};
   if (enemy_pieces & (1ULL << to_square)) {
     info.captured_piece = piece_locations[to_square];
   }
@@ -223,6 +278,7 @@ UndoInfo Board::playMove(Move move) {
   }
   *piece &= ~(1ULL << from_square);
   piece_locations[from_square] = 0;
+  pst_score_white -= pst_white_contribution(turn, piece_type, from_square);
 
   // IF OPPONENT'S ROOK CAPTURED, UPDATE CASTLING FLAGS FOR OPPONENT
 
@@ -245,6 +301,7 @@ UndoInfo Board::playMove(Move move) {
     uint8_t piece = piece_locations[to_square];
     *piece_map[piece][ENEMY] &= ~(1ULL << to_square);
     zobrist_hash ^= ZOBRIST_VALUES[!turn][piece][to_square];
+    pst_score_white -= pst_white_contribution(!turn, piece, to_square);
   }
 
   // Zobrist hash
@@ -257,6 +314,8 @@ UndoInfo Board::playMove(Move move) {
     enemy_pawns &= ~(1ULL << en_passant_square);
     piece_locations[en_passant_square] = 0;
     zobrist_hash ^= ZOBRIST_VALUES[!turn][PAWN_PIECE][en_passant_square];
+    pst_score_white -=
+        pst_white_contribution(!turn, PAWN_PIECE, en_passant_square);
   } else if (piece_type == KING_PIECE) {
     if (abs(to_square - from_square) == 2) {
       if (to_square < from_square) {
@@ -266,6 +325,10 @@ UndoInfo Board::playMove(Move move) {
         piece_locations[to_square + 1] = ROOK_PIECE;
         zobrist_hash ^= ZOBRIST_VALUES[turn][ROOK_PIECE][to_square - 1];
         zobrist_hash ^= ZOBRIST_VALUES[turn][ROOK_PIECE][to_square + 1];
+        pst_score_white -=
+            pst_white_contribution(turn, ROOK_PIECE, to_square - 1);
+        pst_score_white +=
+            pst_white_contribution(turn, ROOK_PIECE, to_square + 1);
       } else {
         rooks &= ~(1ULL << (to_square + 2));
         rooks |= 1ULL << (to_square - 1);
@@ -273,6 +336,10 @@ UndoInfo Board::playMove(Move move) {
         piece_locations[to_square - 1] = ROOK_PIECE;
         zobrist_hash ^= ZOBRIST_VALUES[turn][ROOK_PIECE][to_square + 2];
         zobrist_hash ^= ZOBRIST_VALUES[turn][ROOK_PIECE][to_square - 1];
+        pst_score_white -=
+            pst_white_contribution(turn, ROOK_PIECE, to_square + 2);
+        pst_score_white +=
+            pst_white_contribution(turn, ROOK_PIECE, to_square - 1);
       }
     }
     castle_state[turn] = CASTLE_NO_SHORT_NO_LONG;
@@ -291,30 +358,20 @@ UndoInfo Board::playMove(Move move) {
       }
     }
   }
-  if (promotion_piece == 0) {
-    *piece |= 1ULL << to_square;
-    piece_locations[to_square] = piece_type;
-  } else if (promotion_piece == 4) {
-    queen |= 1ULL << to_square;
-    piece_locations[to_square] = QUEEN_PIECE;
+  // Encoded promotion values 1-4 map to KNIGHT/BISHOP/ROOK/QUEEN. Index 0 is
+  // unused — the `promotion_piece ? ... : piece_type` selects piece_type when
+  // there's no promotion.
+  static constexpr uint8_t PROMOTION_TARGET[5] = {
+      EMPTY_PIECE, KNIGHT_PIECE, BISHOP_PIECE, ROOK_PIECE, QUEEN_PIECE};
+  uint8_t result_piece =
+      promotion_piece ? PROMOTION_TARGET[promotion_piece] : piece_type;
+  *piece_map[result_piece][FRIEND] |= 1ULL << to_square;
+  piece_locations[to_square] = result_piece;
+  if (promotion_piece) {
     zobrist_hash ^= ZOBRIST_VALUES[turn][PAWN_PIECE][to_square];
-    zobrist_hash ^= ZOBRIST_VALUES[turn][QUEEN_PIECE][to_square];
-  } else if (promotion_piece == 3) {
-    rooks |= 1ULL << to_square;
-    piece_locations[to_square] = ROOK_PIECE;
-    zobrist_hash ^= ZOBRIST_VALUES[turn][PAWN_PIECE][to_square];
-    zobrist_hash ^= ZOBRIST_VALUES[turn][ROOK_PIECE][to_square];
-  } else if (promotion_piece == 1) {
-    knights |= 1ULL << to_square;
-    piece_locations[to_square] = KNIGHT_PIECE;
-    zobrist_hash ^= ZOBRIST_VALUES[turn][PAWN_PIECE][to_square];
-    zobrist_hash ^= ZOBRIST_VALUES[turn][KNIGHT_PIECE][to_square];
-  } else if (promotion_piece == 2) {
-    bishops |= 1ULL << to_square;
-    piece_locations[to_square] = BISHOP_PIECE;
-    zobrist_hash ^= ZOBRIST_VALUES[turn][PAWN_PIECE][to_square];
-    zobrist_hash ^= ZOBRIST_VALUES[turn][BISHOP_PIECE][to_square];
+    zobrist_hash ^= ZOBRIST_VALUES[turn][result_piece][to_square];
   }
+  pst_score_white += pst_white_contribution(turn, result_piece, to_square);
   // Castling rights diff (per side)
   if (castle_state[0] != info.previous_castle_state[0]) {
     zobrist_hash ^= ZOBRIST_CASTLE[0][info.previous_castle_state[0]];
@@ -354,6 +411,7 @@ void Board::undoMove(UndoInfo undo_info) {
   uint8_t prev_promotion_piece = GET_PROMOTION_PIECE(previous_move);
   uint8_t piece_type = piece_locations[prev_to_move];
   zobrist_hash = undo_info.previous_zobrist_hash;
+  pst_score_white = undo_info.previous_pst_score_white;
   uint64_t *piece = piece_map[piece_type][ENEMY];
   *piece &= ~(1ULL << prev_to_move);
   piece_locations[prev_to_move] = EMPTY_PIECE;
@@ -398,6 +456,43 @@ void Board::undoMove(UndoInfo undo_info) {
   friendly_pieces = pawns | knights | bishops | rooks | queen | king;
   enemy_pieces = enemy_pawns | enemy_knights | enemy_bishops | enemy_rooks |
                  enemy_queen | enemy_king;
+}
+
+UndoInfo Board::playNullMove() {
+  UndoInfo info = {previous_move,
+                   {castle_state[0], castle_state[1]},
+                   EMPTY_PIECE,
+                   zobrist_hash,
+                   pst_score_white};
+  int prev_to = GET_TO_SQUARE(previous_move);
+  int prev_from = GET_FROM_SQUARE(previous_move);
+  if ((enemy_pawns & (1ULL << prev_to)) && abs(prev_to - prev_from) == 16) {
+    zobrist_hash ^= ZOBRIST_EP_FILE[prev_to % 8];
+  }
+  zobrist_hash ^= ZOBRIST_TURN;
+  previous_move = 0;
+  turn = !turn;
+  std::swap(pawns, enemy_pawns);
+  std::swap(knights, enemy_knights);
+  std::swap(bishops, enemy_bishops);
+  std::swap(rooks, enemy_rooks);
+  std::swap(queen, enemy_queen);
+  std::swap(king, enemy_king);
+  std::swap(friendly_pieces, enemy_pieces);
+  return info;
+}
+
+void Board::undoNullMove(UndoInfo undo_info) {
+  std::swap(pawns, enemy_pawns);
+  std::swap(knights, enemy_knights);
+  std::swap(bishops, enemy_bishops);
+  std::swap(rooks, enemy_rooks);
+  std::swap(queen, enemy_queen);
+  std::swap(king, enemy_king);
+  std::swap(friendly_pieces, enemy_pieces);
+  turn = !turn;
+  previous_move = undo_info.previous_previous_move;
+  zobrist_hash = undo_info.previous_zobrist_hash;
 }
 
 uint16_t Board::generateLegalMoves(Move moveList[MAX_MOVES]) {
@@ -580,13 +675,25 @@ uint16_t Board::generateLegalMoves(Move moveList[MAX_MOVES]) {
   uint16_t final_index = 0;
   uint8_t original_king_square = king_square;
 
+  uint64_t pinned_pieces = compute_pinned_pieces(king_square);
+  bool in_check =
+      is_square_attacked(friendly_pieces | enemy_pieces, king_square);
+
   for (int i = 0; i < moveIndex; ++i) {
     uint8_t to_square = GET_TO_SQUARE(moveList[i]);
     uint8_t from_square = GET_FROM_SQUARE(moveList[i]);
     uint8_t en_passant_flag = GET_EN_PASSANT_FLAG(moveList[i]);
+    bool from_is_king = (king & (1ULL << from_square)) != 0;
+    bool from_is_pinned = (pinned_pieces & (1ULL << from_square)) != 0;
+
+    if (!in_check && !from_is_king && !en_passant_flag && !from_is_pinned) {
+      moveList[final_index++] = moveList[i];
+      continue;
+    }
+
     uint64_t bitboard = friendly_pieces | enemy_pieces;
     // temporarily set king square before calling is_square_attacked.
-    if (king & (1ULL << from_square)) {
+    if (from_is_king) {
       king_square = to_square;
     }
     bitboard &= ~(1ULL << from_square);
@@ -728,13 +835,24 @@ uint16_t Board::generateCaptureMoves(Move moveList[MAX_MOVES]) {
   // Filter illegal moves (king safety check)
   uint16_t final_index = 0;
   uint8_t original_king_square = king_square;
+  uint64_t pinned_pieces = compute_pinned_pieces(king_square);
+  bool in_check =
+      is_square_attacked(friendly_pieces | enemy_pieces, king_square);
   for (int i = 0; i < moveIndex; ++i) {
     uint8_t to_square = GET_TO_SQUARE(moveList[i]);
     uint8_t from_square = GET_FROM_SQUARE(moveList[i]);
     uint8_t en_passant_flag = GET_EN_PASSANT_FLAG(moveList[i]);
+    bool from_is_king = (king & (1ULL << from_square)) != 0;
+    bool from_is_pinned = (pinned_pieces & (1ULL << from_square)) != 0;
+
+    if (!in_check && !from_is_king && !en_passant_flag && !from_is_pinned) {
+      moveList[final_index++] = moveList[i];
+      continue;
+    }
+
     uint64_t bitboard = friendly_pieces | enemy_pieces;
     // temporarily set king square before calling is_square_attacked.
-    if (king & (1ULL << from_square)) {
+    if (from_is_king) {
       king_square = to_square;
     }
     bitboard &= ~(1ULL << from_square);

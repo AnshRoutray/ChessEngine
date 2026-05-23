@@ -37,6 +37,7 @@ struct UndoInfo {
   uint8_t previous_castle_state[2];
   uint8_t captured_piece;
   uint64_t previous_zobrist_hash;
+  int16_t previous_pst_score_white;
 };
 
 extern uint64_t ZOBRIST_VALUES[2][7][64];
@@ -59,6 +60,8 @@ public:
                               __builtin_ctzll(king));
   }
   void undoMove(UndoInfo undo_info);
+  UndoInfo playNullMove();
+  void undoNullMove(UndoInfo undo_info);
   bool operator==(Board other_board);
   Board();
   Board(uint64_t pawns, uint64_t knights, uint64_t bishops, uint64_t rooks,
@@ -92,9 +95,11 @@ public:
   uint64_t *piece_map[7][2];
 
   uint64_t zobrist_hash;
+  int16_t pst_score_white;
 
   inline uint8_t get_first_index(uint64_t bitboard);
   inline uint64_t shift_piece(uint64_t bitboard, int places);
   inline void clear_piece(uint64_t &bitboard, uint8_t index);
   void init_piece_locations_and_hash();
+  uint64_t compute_pinned_pieces(uint8_t king_sq);
 };

@@ -81,7 +81,7 @@ static constexpr int16_t KING_PST[64] = {
 
 // Combined PST + Material
 
-static int16_t COMBINED_PST[7][64];
+int16_t COMBINED_PST[7][64];
 
 // ---------------------------------------------------------------------------
 // Score accumulation: iterate set bits, add material + PST
@@ -99,45 +99,13 @@ void init_eval_tables() {
   }
 }
 
-// Mirror square for enemy pieces (flip rank)
-static inline uint8_t mirror(uint8_t sq) { return sq ^ 56; }
-
-static inline int16_t score_pieces(uint64_t bb, uint8_t piece_type,
-                                   bool is_enemy) {
-  int16_t score = 0;
-  while (bb) {
-    uint8_t sq = __builtin_ctzll(bb);
-    bb &= bb - 1;
-    score += COMBINED_PST[piece_type][is_enemy ? mirror(sq) : sq];
-  }
-  return score;
-}
-
 // ---------------------------------------------------------------------------
 // Main evaluation entry point
 // ---------------------------------------------------------------------------
 
 int16_t evaluate(Board *board) {
-  int16_t score = 0;
-  // std::cout << "Pawns: " << board->pawns << std::endl << "Knights: " <<
-  //  board->knights << std::endl;
-  // Friendly pieces (positive contribution)
-  score += score_pieces(board->pawns, PAWN_PIECE, false);
-  score += score_pieces(board->knights, KNIGHT_PIECE, false);
-  score += score_pieces(board->bishops, BISHOP_PIECE, false);
-  score += score_pieces(board->rooks, ROOK_PIECE, false);
-  score += score_pieces(board->queen, QUEEN_PIECE, false);
-  score += score_pieces(board->king, KING_PIECE, false);
-
-  // Enemy pieces (negative contribution, mirrored PST)
-  score -= score_pieces(board->enemy_pawns, PAWN_PIECE, true);
-  score -= score_pieces(board->enemy_knights, KNIGHT_PIECE, true);
-  score -= score_pieces(board->enemy_bishops, BISHOP_PIECE, true);
-  score -= score_pieces(board->enemy_rooks, ROOK_PIECE, true);
-  score -= score_pieces(board->enemy_queen, QUEEN_PIECE, true);
-  score -= score_pieces(board->enemy_king, KING_PIECE, true);
-
-  return score;
+  return (board->turn == WHITE_TURN) ? board->pst_score_white
+                                     : -board->pst_score_white;
 }
 
 int16_t mvv_lva_heuristic(Board *board, Move move) {

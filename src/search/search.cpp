@@ -9,6 +9,13 @@
 TT_Entry TT_TABLE[TT_SIZE];
 thread_local Move moveList[MAX_DEPTH][MAX_MOVES];
 thread_local std::pair<Move, int16_t> newMoveList[MAX_DEPTH][MAX_MOVES];
+thread_local Move killers[MAX_DEPTH][2];
+thread_local int32_t history[2][64][64];
+
+constexpr int16_t CAPTURE_BONUS = 10000;
+constexpr int16_t KILLER_0_SCORE = 5000;
+constexpr int16_t KILLER_1_SCORE = 4000;
+constexpr int32_t HISTORY_MAX = KILLER_1_SCORE - 1;
 
 Move retrieveBestMove(Board *board, uint8_t max_depth) {
   Move best_move = 0;
@@ -63,9 +70,27 @@ int16_t searchBestMove(Board *board, uint8_t depth, int16_t alpha,
     }
     use_TT_best_move = true;
   }
+
+  constexpr uint8_t NMP_R = 3;
+  bool in_check = board->is_square_attacked();
+  bool has_non_pawn =
+      (board->knights | board->bishops | board->rooks | board->queen) != 0;
+  if (!in_check && depth >= NMP_R + 1 && has_non_pawn &&
+      board->previous_move != 0 && evaluate(board) >= beta) {
+    UndoInfo null_undo = board->playNullMove();
+    int16_t null_score =
+        -searchBestMove(board, depth - 1 - NMP_R, -beta, -beta + 1);
+    board->undoNullMove(null_undo);
+    if (null_score >= beta) {
+      TT_Entry entry = {depth, AT_LEAST, 0, beta, zobrist_hash};
+      TT_TABLE[zobrist_hash & (TT_SIZE - 1)] = entry;
+      return beta;
+    }
+  }
+
   uint16_t total_moves = board->generateLegalMoves(moveList[depth]);
   if (total_moves == 0) {
-    if (board->is_square_attacked()) {
+    if (in_check) {
       return -(30000 - depth);
     } else {
       return 0;
@@ -73,8 +98,20 @@ int16_t searchBestMove(Board *board, uint8_t depth, int16_t alpha,
   }
   int16_t original_alpha = alpha;
   for (int i = 0; i < total_moves; i++) {
-    newMoveList[depth][i] = {moveList[depth][i],
-                             mvv_lva_heuristic(board, moveList[depth][i])};
+    Move m = moveList[depth][i];
+    uint8_t captured = board->piece_locations[GET_TO_SQUARE(m)];
+    int16_t score;
+    if (captured != EMPTY_PIECE) {
+      score = CAPTURE_BONUS + mvv_lva_heuristic(board, m);
+    } else if (m == killers[depth][0]) {
+      score = KILLER_0_SCORE;
+    } else if (m == killers[depth][1]) {
+      score = KILLER_1_SCORE;
+    } else {
+      int32_t h = history[board->turn][GET_FROM_SQUARE(m)][GET_TO_SQUARE(m)];
+      score = (int16_t)std::min(h, HISTORY_MAX);
+    }
+    newMoveList[depth][i] = {m, score};
   }
   std::sort(newMoveList[depth], newMoveList[depth] + total_moves,
             [board, tt_value, use_TT_best_move](std::pair<Move, int16_t> a,
@@ -87,15 +124,40 @@ int16_t searchBestMove(Board *board, uint8_t depth, int16_t alpha,
             });
   Move best_move = newMoveList[depth][0].first;
   int16_t current_score = -INF;
+  constexpr uint16_t LMR_MOVE_THRESHOLD = 4;
+  constexpr uint8_t LMR_MIN_DEPTH = 3;
   for (uint16_t move = 0; move < total_moves; ++move) {
-    UndoInfo undo_info = board->playMove(newMoveList[depth][move].first);
-    int16_t score = (depth == 0)
-                        ? -stableSearch(board, -beta, -alpha)
-                        : -searchBestMove(board, depth - 1, -beta, -alpha);
+    Move current_move = newMoveList[depth][move].first;
+    UndoInfo undo_info = board->playMove(current_move);
+    bool reduce = depth >= LMR_MIN_DEPTH && move >= LMR_MOVE_THRESHOLD &&
+                  !in_check && undo_info.captured_piece == EMPTY_PIECE &&
+                  GET_PROMOTION_PIECE(current_move) == 0;
+    int16_t score;
+    if (depth == 0) {
+      score = -stableSearch(board, -beta, -alpha);
+    } else if (reduce) {
+      score = -searchBestMove(board, depth - 2, -alpha - 1, -alpha);
+      if (score > alpha) {
+        score = -searchBestMove(board, depth - 1, -beta, -alpha);
+      }
+    } else {
+      score = -searchBestMove(board, depth - 1, -beta, -alpha);
+    }
     board->undoMove(undo_info);
     if (score >= beta) {
-      TT_Entry entry = {depth, AT_LEAST, newMoveList[depth][move].first, beta,
-                        zobrist_hash};
+      Move cutting_move = newMoveList[depth][move].first;
+      bool is_capture =
+          board->piece_locations[GET_TO_SQUARE(cutting_move)] != EMPTY_PIECE;
+      bool is_ep = GET_EN_PASSANT_FLAG(cutting_move);
+      if (!is_capture && !is_ep) {
+        if (cutting_move != killers[depth][0]) {
+          killers[depth][1] = killers[depth][0];
+          killers[depth][0] = cutting_move;
+        }
+        history[board->turn][GET_FROM_SQUARE(cutting_move)]
+               [GET_TO_SQUARE(cutting_move)] += depth * depth;
+      }
+      TT_Entry entry = {depth, AT_LEAST, cutting_move, beta, zobrist_hash};
       TT_TABLE[zobrist_hash & (TT_SIZE - 1)] = entry;
       return beta;
     }
@@ -114,6 +176,7 @@ int16_t searchBestMove(Board *board, uint8_t depth, int16_t alpha,
 
 int16_t stableSearch(Board *board, int16_t alpha, int16_t beta) {
   Move captureMoveList[MAX_CAPTURE_MOVES];
+  std::pair<Move, int16_t> scoredCaptureList[MAX_CAPTURE_MOVES];
   int16_t evaluation = evaluate(board);
   if (evaluation >= beta) {
     return evaluation;
@@ -123,18 +186,23 @@ int16_t stableSearch(Board *board, int16_t alpha, int16_t beta) {
   if (total_moves == 0) {
     return evaluation;
   }
-  std::sort(captureMoveList, captureMoveList + total_moves,
-            [board](Move a, Move b) {
-              return mvv_lva_heuristic(board, a) > mvv_lva_heuristic(board, b);
+  for (uint16_t i = 0; i < total_moves; i++) {
+    scoredCaptureList[i] = {captureMoveList[i],
+                            mvv_lva_heuristic(board, captureMoveList[i])};
+  }
+  std::sort(scoredCaptureList, scoredCaptureList + total_moves,
+            [](const std::pair<Move, int16_t> &a,
+               const std::pair<Move, int16_t> &b) {
+              return a.second > b.second;
             });
   for (uint8_t move = 0; move < total_moves; ++move) {
-    UndoInfo undo_info = board->playMove(captureMoveList[move]);
+    UndoInfo undo_info = board->playMove(scoredCaptureList[move].first);
     evaluation = -stableSearch(board, -beta, -alpha);
     board->undoMove(undo_info);
     if (evaluation >= beta) {
       return beta;
     }
-    alpha = std::max<int16_t>(alpha, evaluation); // same perf. comp. here
+    alpha = std::max<int16_t>(alpha, evaluation);
   }
   return alpha;
 }
