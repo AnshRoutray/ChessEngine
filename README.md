@@ -4,7 +4,7 @@ A chess engine written in C++ featuring a bitboard based board representation, P
 
 ## Overview
 
-FrostWeb has gone through two major changes. The original implementation used a 2D vector board representation with a basic minimax search and alpha beta pruning. The current implementation is a ground-up rewrite centered around bitboards and a significantly more powerful search.
+This Chess Engine has gone through two major changes. The original implementation used a 2D vector board representation with a basic minimax search and alpha beta pruning. The current implementation is a ground-up rewrite centered around bitboards and a significantly more powerful search.
 
 ## Architecture
 
