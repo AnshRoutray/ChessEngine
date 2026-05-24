@@ -4,15 +4,15 @@ A chess engine written in C++ featuring a bitboard based board representation, P
 
 ## Overview
 
-This Chess Engine has gone through two major changes. The original implementation used a 2D vector board representation with a basic minimax search and alpha beta pruning. The current implementation is a ground-up rewrite centered around bitboards and a significantly more powerful search.
+This Chess Engine has gone through two major changes. The original implementation that I made in High School :) stored piece positions in an 8x8 integer vector. I used a 2D vector board representation with a basic minimax search and alpha beta pruning. The current implementation is a ground-up rewrite centered around bitboards and a significantly more powerful search. Honestly I'm surprised the old implementation even got to depth 5.
 
 ## Architecture
 
 ### Board Representation
 
-The original 2D vector implementation stored piece positions in an 8x8 array. Generating moves required iterating over the board and checking each square individually, which was slow and cache unfriendly.
+The original 2D vector implementation required generating moves required iterating over the board and checking each square individually, which was EXTREMELY slow, imagine 64 integers being passed by copy (yes not even by reference) multiple times throughout a search tree.
 
-The current implementation uses a bitboard representation where each piece type and color is stored as a 64 bit integer (uint64_t) with each bit corresponding to a square on the board. This allows move generation to exploit hardware level (__bultin_ctzll, __builtin_clzll) bit manipulation instructions rather than iterating over squares.
+The current implementation uses a bitboard representation where each piece type and color is stored as a 64 bit integer (uint64_t) with each bit corresponding to a square on the board. This allows move generation to exploit hardware level (__bultin_ctzll, __builtin_clzll) bit manipulation instructions rather than iterating over squares. So instead of a for loop it's literally ONE machine instruction.
 
 Sliding piece attacks (bishops, rooks, queens) are generated using PEXT (Parallel Bits Extract) instructions via the BMI2 instruction set extension for x86-64 architecture. Attack lookup tables are indexed by extracting the occupancy bits along each piece's attack ray, giving O(1) attack generation per piece with no branching. The attack bitboards are generated at compile time.
 
