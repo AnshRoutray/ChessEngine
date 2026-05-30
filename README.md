@@ -114,8 +114,6 @@ With LMR enabled the engine searches one ply deeper in comparable wall time:
 ## Planned Work
 
 - Neural Network evaluation over Hand Crafted.
-- SIMD Vectorization of certain parts. (Most likely in an improved NN evaluation method)
-- Parallel search with OpenMP
 - Distributed Search over multiple computers using RDMA.
 
 ## Build
@@ -134,7 +132,7 @@ Requires a CPU with BMI2 (PEXT) support, OpenMP, and `-mcmodel=medium` (all set 
 ./chess_engine [depth]
 ```
 
-`depth` defaults to 10. The transposition table is fixed at 8 GB. Thread count defaults to all available logical CPUs; override with `OMP_NUM_THREADS`:
+`depth` defaults to 10. The transposition table is fixed at 8 GB. If you want to change, value is located in /include/search.hpp the TT_SIZE value. Thread count defaults to all available logical CPUs; override with `OMP_NUM_THREADS`:
 
 ```bash
 OMP_NUM_THREADS=6 ./chess_engine 8
