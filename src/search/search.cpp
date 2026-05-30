@@ -52,18 +52,22 @@ Move retrieveBestMoveAtDepth(Board *board, uint8_t depth) {
 int16_t searchBestMove(Board *board, uint8_t depth, int16_t alpha,
                        int16_t beta) {
   uint64_t zobrist_hash = board->zobrist_hash;
-  TT_Entry tt_value = TT_TABLE[zobrist_hash & (TT_SIZE - 1)];
+  uint64_t tt_data;
+  Move tt_best_move = 0;
   bool use_TT_best_move = false;
-  if (tt_value.zobrist_hash == zobrist_hash) {
-    if (tt_value.depth >= depth) {
-      if (tt_value.cutoff_flag == EXACT) {
-        return tt_value.score;
-      } else if (tt_value.cutoff_flag == AT_LEAST) { // cutoff flag is AT LEAST
-        if (tt_value.score >= beta) {
+  if (tt_probe(zobrist_hash, tt_data)) {
+    tt_best_move = tt_move(tt_data);
+    if (tt_depth(tt_data) >= depth) {
+      CUTOFF_FLAG flag = tt_flag(tt_data);
+      int16_t score = tt_score(tt_data);
+      if (flag == EXACT) {
+        return score;
+      } else if (flag == AT_LEAST) {
+        if (score >= beta) {
           return beta;
         }
       } else {
-        if (tt_value.score <= alpha) {
+        if (score <= alpha) {
           return alpha;
         }
       }
@@ -82,8 +86,7 @@ int16_t searchBestMove(Board *board, uint8_t depth, int16_t alpha,
         -searchBestMove(board, depth - 1 - NMP_R, -beta, -beta + 1);
     board->undoNullMove(null_undo);
     if (null_score >= beta) {
-      TT_Entry entry = {depth, AT_LEAST, 0, beta, zobrist_hash};
-      TT_TABLE[zobrist_hash & (TT_SIZE - 1)] = entry;
+      tt_store(zobrist_hash, depth, AT_LEAST, 0, beta);
       return beta;
     }
   }
@@ -114,11 +117,11 @@ int16_t searchBestMove(Board *board, uint8_t depth, int16_t alpha,
     newMoveList[depth][i] = {m, score};
   }
   std::sort(newMoveList[depth], newMoveList[depth] + total_moves,
-            [board, tt_value, use_TT_best_move](std::pair<Move, int16_t> a,
-                                                std::pair<Move, int16_t> b) {
-              if (use_TT_best_move && (a.first == tt_value.best_move ||
-                                       b.first == tt_value.best_move)) {
-                return a.first == tt_value.best_move;
+            [tt_best_move, use_TT_best_move](std::pair<Move, int16_t> a,
+                                             std::pair<Move, int16_t> b) {
+              if (use_TT_best_move &&
+                  (a.first == tt_best_move || b.first == tt_best_move)) {
+                return a.first == tt_best_move;
               }
               return a.second > b.second;
             });
@@ -157,8 +160,7 @@ int16_t searchBestMove(Board *board, uint8_t depth, int16_t alpha,
         history[board->turn][GET_FROM_SQUARE(cutting_move)]
                [GET_TO_SQUARE(cutting_move)] += depth * depth;
       }
-      TT_Entry entry = {depth, AT_LEAST, cutting_move, beta, zobrist_hash};
-      TT_TABLE[zobrist_hash & (TT_SIZE - 1)] = entry;
+      tt_store(zobrist_hash, depth, AT_LEAST, cutting_move, beta);
       return beta;
     }
     if (score > current_score) {
@@ -168,9 +170,8 @@ int16_t searchBestMove(Board *board, uint8_t depth, int16_t alpha,
     alpha = std::max<int16_t>(alpha,
                               score); // Compare performance with if statement
   }
-  TT_Entry entry = {depth, (original_alpha == alpha) ? AT_MOST : EXACT,
-                    best_move, alpha, zobrist_hash};
-  TT_TABLE[zobrist_hash % TT_SIZE] = entry;
+  tt_store(zobrist_hash, depth, (original_alpha == alpha) ? AT_MOST : EXACT,
+           best_move, alpha);
   return alpha;
 }
 
@@ -190,11 +191,11 @@ int16_t stableSearch(Board *board, int16_t alpha, int16_t beta) {
     scoredCaptureList[i] = {captureMoveList[i],
                             mvv_lva_heuristic(board, captureMoveList[i])};
   }
-  std::sort(scoredCaptureList, scoredCaptureList + total_moves,
-            [](const std::pair<Move, int16_t> &a,
-               const std::pair<Move, int16_t> &b) {
-              return a.second > b.second;
-            });
+  std::sort(
+      scoredCaptureList, scoredCaptureList + total_moves,
+      [](const std::pair<Move, int16_t> &a, const std::pair<Move, int16_t> &b) {
+        return a.second > b.second;
+      });
   for (uint8_t move = 0; move < total_moves; ++move) {
     UndoInfo undo_info = board->playMove(scoredCaptureList[move].first);
     evaluation = -stableSearch(board, -beta, -alpha);

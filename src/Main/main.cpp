@@ -87,7 +87,7 @@ int main() {
 
   // Calculate raw nodes at depth 9 (no pruning)
   uint64_t raw_nodes = 2439530234167;
-  uint8_t DEPTH = 11;
+  uint8_t DEPTH = 8;
   auto start = std::chrono::high_resolution_clock::now();
   Move bestMove = retrieveBestMove(&board, DEPTH);
   auto end = std::chrono::high_resolution_clock::now();
