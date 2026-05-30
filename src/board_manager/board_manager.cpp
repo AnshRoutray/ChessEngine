@@ -74,6 +74,35 @@ Board::Board(uint64_t pawns, uint64_t knights, uint64_t bishops, uint64_t rooks,
   init_piece_locations_and_hash();
 }
 
+Board::Board(const Board &other)
+    : pawns(other.pawns), knights(other.knights), bishops(other.bishops),
+      rooks(other.rooks), queen(other.queen), king(other.king),
+      enemy_pawns(other.enemy_pawns), enemy_knights(other.enemy_knights),
+      enemy_bishops(other.enemy_bishops), enemy_rooks(other.enemy_rooks),
+      enemy_queen(other.enemy_queen), enemy_king(other.enemy_king),
+      friendly_pieces(other.friendly_pieces),
+      enemy_pieces(other.enemy_pieces),
+      castle_state{other.castle_state[0], other.castle_state[1]},
+      turn(other.turn), previous_move(other.previous_move),
+      zobrist_hash(other.zobrist_hash),
+      pst_score_white(other.pst_score_white) {
+  for (uint8_t i = 0; i < 64; i++) {
+    piece_locations[i] = other.piece_locations[i];
+  }
+  piece_map[PAWN_PIECE][0] = &pawns;
+  piece_map[KNIGHT_PIECE][0] = &knights;
+  piece_map[BISHOP_PIECE][0] = &bishops;
+  piece_map[ROOK_PIECE][0] = &rooks;
+  piece_map[QUEEN_PIECE][0] = &queen;
+  piece_map[KING_PIECE][0] = &king;
+  piece_map[PAWN_PIECE][1] = &enemy_pawns;
+  piece_map[KNIGHT_PIECE][1] = &enemy_knights;
+  piece_map[BISHOP_PIECE][1] = &enemy_bishops;
+  piece_map[ROOK_PIECE][1] = &enemy_rooks;
+  piece_map[QUEEN_PIECE][1] = &enemy_queen;
+  piece_map[KING_PIECE][1] = &enemy_king;
+}
+
 void Board::init_piece_locations_and_hash() {
   piece_map[PAWN_PIECE][0] = &pawns;
   piece_map[KNIGHT_PIECE][0] = &knights;

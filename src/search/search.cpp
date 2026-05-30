@@ -3,10 +3,12 @@
 #include "evaluate.hpp"
 #include "move_encoding.hpp"
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
-#include <iostream>
+#include <omp.h>
 
 TT_Entry TT_TABLE[TT_SIZE];
+static std::atomic<bool> stop_worker_thread{false};
 thread_local Move moveList[MAX_DEPTH][MAX_MOVES];
 thread_local std::pair<Move, int16_t> newMoveList[MAX_DEPTH][MAX_MOVES];
 thread_local Move killers[MAX_DEPTH][2];
@@ -19,8 +21,25 @@ constexpr int32_t HISTORY_MAX = KILLER_1_SCORE - 1;
 
 Move retrieveBestMove(Board *board, uint8_t max_depth) {
   Move best_move = 0;
-  for (int depth = 1; depth <= max_depth; depth++) {
-    best_move = retrieveBestMoveAtDepth(board, depth);
+  stop_worker_thread.store(false, std::memory_order_relaxed);
+#pragma omp parallel
+  {
+    Board thread_local_board = *board;
+    int tId = omp_get_thread_num();
+    if (tId == 0) {
+      for (int depth = 1; depth <= max_depth; depth++) {
+        best_move = retrieveBestMoveAtDepth(&thread_local_board, depth);
+      }
+      stop_worker_thread.store(true, std::memory_order_relaxed);
+    } else {
+      int starting_depth = (max_depth / 2) + tId % (max_depth / 2);
+      for (int depth = starting_depth; depth <= max_depth; depth++) {
+        retrieveBestMoveAtDepth(&thread_local_board, depth);
+      }
+      while (!stop_worker_thread.load(std::memory_order_relaxed)) {
+        retrieveBestMoveAtDepth(&thread_local_board, max_depth);
+      }
+    }
   }
   return best_move;
 }
@@ -51,6 +70,9 @@ Move retrieveBestMoveAtDepth(Board *board, uint8_t depth) {
 
 int16_t searchBestMove(Board *board, uint8_t depth, int16_t alpha,
                        int16_t beta) {
+  if (stop_worker_thread.load(std::memory_order_relaxed)) {
+    return 0;
+  }
   uint64_t zobrist_hash = board->zobrist_hash;
   uint64_t tt_data;
   Move tt_best_move = 0;

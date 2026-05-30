@@ -70,6 +70,8 @@ public:
         uint64_t enemy_queen, uint64_t enemy_king, uint8_t castle_state[2],
         uint8_t turn, Move previous_move);
 
+  Board(const Board &other);
+
   uint64_t pawns;
   uint64_t knights;
   uint64_t bishops;
