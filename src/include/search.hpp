@@ -9,7 +9,7 @@ constexpr int16_t INF = INT16_MAX;
 constexpr uint8_t MAX_CAPTURE_MOVES = 218;
 constexpr uint8_t MAX_DEPTH = 40;
 
-constexpr int TT_SIZE = 1 << 25;
+constexpr std::size_t TT_SIZE = 1ULL << 29; // 8 GB
 
 enum CUTOFF_FLAG : uint8_t { EXACT = 0, AT_LEAST = 1, AT_MOST = 2 };
 

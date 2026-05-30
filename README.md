@@ -124,5 +124,14 @@ With LMR enabled the engine searches one ply deeper in comparable wall time:
 mkdir build && cd build
 cmake -DCMAKE_BUILD_TYPE=Release ..
 cmake --build .
+```
 
-Requires a CPU with BMI2 support for PEXT instructions. Compile with `-mbmi2 -O2` or higher.
+Requires a CPU with BMI2 (PEXT) support, OpenMP, and `-mcmodel=medium` (all set in `CMakeLists.txt`). System must have at least 8 GB of RAM and 6 logical CPUs; the engine validates this at startup and exits with an error otherwise.
+
+## Run
+
+```bash
+./chess_engine [depth]
+```
+
+`depth` defaults to 10. The transposition table is fixed at 8 GB and OpenMP threads at 6.

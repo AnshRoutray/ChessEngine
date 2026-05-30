@@ -1,5 +1,3 @@
-#pragma once
-
 #include "board_manager.hpp"
 #include "evaluate.hpp"
 #include "move_encoding.hpp"
@@ -7,8 +5,26 @@
 #include <chrono>
 #include <cstdint>
 #include <iostream>
+#include <omp.h>
+#include <thread>
+#ifdef __linux__
+#include <sys/sysinfo.h>
+#endif
 
 using namespace std;
+
+constexpr int REQUIRED_THREADS = 6;
+constexpr size_t REQUIRED_RAM_MB = (TT_SIZE * sizeof(TT_Entry)) / (1024 * 1024);
+
+static size_t get_system_ram_mb() {
+#ifdef __linux__
+  struct sysinfo info;
+  if (sysinfo(&info) != 0) return 0;
+  return (size_t)info.totalram * info.mem_unit / (1024 * 1024);
+#else
+  return 0;
+#endif
+}
 
 std::string square_to_algebraic(uint8_t sq) {
   char file = 'h' - (sq % 8); // h=0, g=1, f=2... a=7
@@ -82,12 +98,27 @@ uint64_t perft(Board *board) {
 }
 
 int main(int argc, char *argv[]) {
-  init_engine_tables();
-  Board board;
+  size_t ram_mb = get_system_ram_mb();
+  unsigned int hw_threads = std::thread::hardware_concurrency();
+  if (ram_mb != 0 && ram_mb < REQUIRED_RAM_MB) {
+    cerr << "Error: this engine requires at least " << REQUIRED_RAM_MB
+         << " MB of system RAM for the transposition table (detected "
+         << ram_mb << " MB)." << endl;
+    return 1;
+  }
+  if (hw_threads != 0 && (int)hw_threads < REQUIRED_THREADS) {
+    cerr << "Error: this engine requires at least " << REQUIRED_THREADS
+         << " logical CPUs (detected " << hw_threads << ")." << endl;
+    return 1;
+  }
 
-  // Calculate raw nodes at depth 9 (no pruning)
+  init_engine_tables();
+  omp_set_num_threads(REQUIRED_THREADS);
+
+  uint8_t DEPTH = (argc >= 2) ? std::stoi(argv[1]) : 10;
+
+  Board board;
   uint64_t raw_nodes = 2439530234167;
-  uint8_t DEPTH = (argc != 2) ? 10 : std::stoi(argv[1]);
   auto start = std::chrono::high_resolution_clock::now();
   Move bestMove = retrieveBestMove(&board, DEPTH);
   auto end = std::chrono::high_resolution_clock::now();
@@ -98,6 +129,8 @@ int main(int argc, char *argv[]) {
   cout << "           Chess Engine Search Stats           " << endl;
   cout << "===========================================" << endl;
   cout << "Depth searched:       " << (int)DEPTH << endl;
+  cout << "Threads:              " << REQUIRED_THREADS << endl;
+  cout << "Hash size:            " << REQUIRED_RAM_MB << " MB" << endl;
   cout << "Time taken:           " << elapsed << " seconds" << endl;
   cout << "Number of raw positions:  " << raw_nodes << " (~" << raw_nodes / 1e12
        << "Trillion)" << endl;
