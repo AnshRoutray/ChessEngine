@@ -13,7 +13,6 @@
 
 using namespace std;
 
-constexpr int REQUIRED_THREADS = 6;
 constexpr size_t REQUIRED_RAM_MB = (TT_SIZE * sizeof(TT_Entry)) / (1024 * 1024);
 
 static size_t get_system_ram_mb() {
@@ -106,14 +105,8 @@ int main(int argc, char *argv[]) {
          << ram_mb << " MB)." << endl;
     return 1;
   }
-  if (hw_threads != 0 && (int)hw_threads < REQUIRED_THREADS) {
-    cerr << "Error: this engine requires at least " << REQUIRED_THREADS
-         << " logical CPUs (detected " << hw_threads << ")." << endl;
-    return 1;
-  }
 
   init_engine_tables();
-  omp_set_num_threads(REQUIRED_THREADS);
 
   uint8_t DEPTH = (argc >= 2) ? std::stoi(argv[1]) : 10;
 
@@ -129,7 +122,6 @@ int main(int argc, char *argv[]) {
   cout << "           Chess Engine Search Stats           " << endl;
   cout << "===========================================" << endl;
   cout << "Depth searched:       " << (int)DEPTH << endl;
-  cout << "Threads:              " << REQUIRED_THREADS << endl;
   cout << "Hash size:            " << REQUIRED_RAM_MB << " MB" << endl;
   cout << "Time taken:           " << elapsed << " seconds" << endl;
   cout << "Number of raw positions:  " << raw_nodes << " (~" << raw_nodes / 1e12

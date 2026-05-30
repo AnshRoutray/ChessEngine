@@ -134,4 +134,8 @@ Requires a CPU with BMI2 (PEXT) support, OpenMP, and `-mcmodel=medium` (all set 
 ./chess_engine [depth]
 ```
 
-`depth` defaults to 10. The transposition table is fixed at 8 GB and OpenMP threads at 6.
+`depth` defaults to 10. The transposition table is fixed at 8 GB. Thread count defaults to all available logical CPUs; override with `OMP_NUM_THREADS`:
+
+```bash
+OMP_NUM_THREADS=6 ./chess_engine 8
+```
