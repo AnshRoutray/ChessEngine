@@ -32,12 +32,32 @@ constexpr uint16_t MAX_MOVES = 256;
 constexpr uint8_t FRIEND = 0;
 constexpr uint8_t ENEMY = 1;
 
+// Tapered-eval score: one score per game phase, blended at eval time.
+// Indices 0/1/2 correspond to opening / middlegame / endgame respectively.
+struct PhaseScore {
+  int16_t op;
+  int16_t mg;
+  int16_t eg;
+  PhaseScore &operator+=(const PhaseScore &o) {
+    op += o.op;
+    mg += o.mg;
+    eg += o.eg;
+    return *this;
+  }
+  PhaseScore &operator-=(const PhaseScore &o) {
+    op -= o.op;
+    mg -= o.mg;
+    eg -= o.eg;
+    return *this;
+  }
+};
+
 struct UndoInfo {
   Move previous_previous_move;
   uint8_t previous_castle_state[2];
   uint8_t captured_piece;
   uint64_t previous_zobrist_hash;
-  int16_t previous_pst_score_white;
+  PhaseScore previous_pst_score_white;
 };
 
 extern uint64_t ZOBRIST_VALUES[2][7][64];
@@ -71,6 +91,7 @@ public:
         uint8_t turn, Move previous_move);
 
   Board(const Board &other);
+  Board &operator=(const Board &other);
 
   uint64_t pawns;
   uint64_t knights;
@@ -97,7 +118,7 @@ public:
   uint64_t *piece_map[7][2];
 
   uint64_t zobrist_hash;
-  int16_t pst_score_white;
+  PhaseScore pst_score_white;
 
   inline uint8_t get_first_index(uint64_t bitboard);
   inline uint64_t shift_piece(uint64_t bitboard, int places);

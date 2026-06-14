@@ -30,9 +30,13 @@ set(ENGINE_SOURCES
 # Create engine library (reusable for main and tests)
 add_library(chess_engine_lib ${ENGINE_SOURCES})
 
-# Main executable
+# Release / UCI executable — the binary users / chess GUIs talk to.
 add_executable(chess_engine src/Main/main.cpp)
 target_link_libraries(chess_engine chess_engine_lib)
+
+# Development executable — perft, single-search benchmarking, etc.
+add_executable(chess_engine_debug src/Main/debug.cpp)
+target_link_libraries(chess_engine_debug chess_engine_lib)
 
 # Enable testing
 enable_testing()

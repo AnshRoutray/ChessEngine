@@ -47,7 +47,7 @@ Board::Board()
       enemy_pawns{BLACK_PAWN_INIT}, enemy_knights{BLACK_KNIGHT_INIT},
       enemy_bishops{BLACK_BISHOP_INIT}, enemy_rooks{BLACK_ROOK_INIT},
       enemy_queen{BLACK_QUEEN_INIT}, enemy_king{BLACK_KING_INIT},
-      turn{WHITE_TURN}, previous_move{0}, zobrist_hash(0), pst_score_white(0) {
+      turn{WHITE_TURN}, previous_move{0}, zobrist_hash(0), pst_score_white{} {
   friendly_pieces = pawns | knights | bishops | rooks | queen | king;
   enemy_pieces = enemy_pawns | enemy_knights | enemy_bishops | enemy_queen |
                  enemy_rooks | enemy_king;
@@ -67,7 +67,7 @@ Board::Board(uint64_t pawns, uint64_t knights, uint64_t bishops, uint64_t rooks,
       enemy_rooks(enemy_rooks), enemy_queen(enemy_queen),
       enemy_king(enemy_king), castle_state{castle_state[0], castle_state[1]},
       turn(turn), previous_move(previous_move), zobrist_hash(0),
-      pst_score_white(0) {
+      pst_score_white{} {
   friendly_pieces = pawns | knights | bishops | rooks | queen | king;
   enemy_pieces = enemy_pawns | enemy_knights | enemy_bishops | enemy_rooks |
                  enemy_queen | enemy_king;
@@ -103,6 +103,48 @@ Board::Board(const Board &other)
   piece_map[KING_PIECE][1] = &enemy_king;
 }
 
+Board &Board::operator=(const Board &other) {
+  if (this == &other)
+    return *this;
+  pawns = other.pawns;
+  knights = other.knights;
+  bishops = other.bishops;
+  rooks = other.rooks;
+  queen = other.queen;
+  king = other.king;
+  enemy_pawns = other.enemy_pawns;
+  enemy_knights = other.enemy_knights;
+  enemy_bishops = other.enemy_bishops;
+  enemy_rooks = other.enemy_rooks;
+  enemy_queen = other.enemy_queen;
+  enemy_king = other.enemy_king;
+  friendly_pieces = other.friendly_pieces;
+  enemy_pieces = other.enemy_pieces;
+  castle_state[0] = other.castle_state[0];
+  castle_state[1] = other.castle_state[1];
+  turn = other.turn;
+  previous_move = other.previous_move;
+  zobrist_hash = other.zobrist_hash;
+  pst_score_white = other.pst_score_white;
+  for (uint8_t i = 0; i < 64; i++)
+    piece_locations[i] = other.piece_locations[i];
+  // Rebind piece_map to our own bitboards, NOT other's. Same reason as the
+  // copy constructor: the pointers must reference this instance.
+  piece_map[PAWN_PIECE][0] = &pawns;
+  piece_map[KNIGHT_PIECE][0] = &knights;
+  piece_map[BISHOP_PIECE][0] = &bishops;
+  piece_map[ROOK_PIECE][0] = &rooks;
+  piece_map[QUEEN_PIECE][0] = &queen;
+  piece_map[KING_PIECE][0] = &king;
+  piece_map[PAWN_PIECE][1] = &enemy_pawns;
+  piece_map[KNIGHT_PIECE][1] = &enemy_knights;
+  piece_map[BISHOP_PIECE][1] = &enemy_bishops;
+  piece_map[ROOK_PIECE][1] = &enemy_rooks;
+  piece_map[QUEEN_PIECE][1] = &enemy_queen;
+  piece_map[KING_PIECE][1] = &enemy_king;
+  return *this;
+}
+
 void Board::init_piece_locations_and_hash() {
   piece_map[PAWN_PIECE][0] = &pawns;
   piece_map[KNIGHT_PIECE][0] = &knights;
@@ -119,7 +161,7 @@ void Board::init_piece_locations_and_hash() {
   for (uint8_t i = 0; i < 64; i++) {
     piece_locations[i] = EMPTY_PIECE;
   }
-  pst_score_white = 0;
+  pst_score_white = PhaseScore{};
   uint64_t bitboard = pawns | enemy_pawns;
   uint8_t index = 0;
   while (bitboard != 0) {
