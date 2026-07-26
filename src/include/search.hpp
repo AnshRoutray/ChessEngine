@@ -4,6 +4,7 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 
 constexpr int16_t INF = INT16_MAX;
 constexpr uint8_t MAX_CAPTURE_MOVES = 218;
@@ -22,7 +23,7 @@ struct TT_Entry {
 static_assert(std::atomic<uint64_t>::is_always_lock_free,
               "Transposition Table requires lock-free 64-bit atomics");
 
-extern TT_Entry TT_TABLE[TT_SIZE];
+extern std::unique_ptr<TT_Entry[]> TT_TABLE;
 
 inline uint64_t tt_pack(uint8_t depth, CUTOFF_FLAG flag, Move move,
                         int16_t score) {

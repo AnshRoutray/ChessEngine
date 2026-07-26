@@ -2,10 +2,11 @@
 #include "evaluate.hpp"
 #include "lookup_tables.hpp"
 #include "move_encoding.hpp"
+#include "search.hpp"
 #include <cmath>
 #include <cstdint>
 #include <immintrin.h>
-#include <iostream>
+#include <memory>
 #include <random>
 
 uint64_t ZOBRIST_VALUES[2][7][64];
@@ -34,6 +35,9 @@ void init_zobrist_hashes() {
 }
 
 void init_engine_tables() {
+  // Initializing Transposition
+  TT_TABLE = std::make_unique<TT_Entry[]>(TT_SIZE);
+
   init_zobrist_hashes();
   init_diagonal_attack_lookup_table();
   init_straight_attack_lookup_table();
@@ -80,12 +84,10 @@ Board::Board(const Board &other)
       enemy_pawns(other.enemy_pawns), enemy_knights(other.enemy_knights),
       enemy_bishops(other.enemy_bishops), enemy_rooks(other.enemy_rooks),
       enemy_queen(other.enemy_queen), enemy_king(other.enemy_king),
-      friendly_pieces(other.friendly_pieces),
-      enemy_pieces(other.enemy_pieces),
+      friendly_pieces(other.friendly_pieces), enemy_pieces(other.enemy_pieces),
       castle_state{other.castle_state[0], other.castle_state[1]},
       turn(other.turn), previous_move(other.previous_move),
-      zobrist_hash(other.zobrist_hash),
-      pst_score_white(other.pst_score_white) {
+      zobrist_hash(other.zobrist_hash), pst_score_white(other.pst_score_white) {
   for (uint8_t i = 0; i < 64; i++) {
     piece_locations[i] = other.piece_locations[i];
   }
@@ -295,10 +297,11 @@ uint64_t Board::compute_pinned_pieces(uint8_t king_sq) {
   uint64_t diag_blockers = king_diag_vision & friendly_pieces;
   uint64_t straight_blockers = king_straight_vision & friendly_pieces;
 
-  uint64_t diag_xray = DIAGONAL_ATTACKS[king_sq][_pext_u64(
-      occ ^ diag_blockers, DIAGONALS[king_sq])];
-  uint64_t straight_xray = STRAIGHT_ATTACKS[king_sq][_pext_u64(
-      occ ^ straight_blockers, straight_mask)];
+  uint64_t diag_xray = DIAGONAL_ATTACKS[king_sq][_pext_u64(occ ^ diag_blockers,
+                                                           DIAGONALS[king_sq])];
+  uint64_t straight_xray =
+      STRAIGHT_ATTACKS[king_sq]
+                      [_pext_u64(occ ^ straight_blockers, straight_mask)];
 
   uint64_t diag_pinners =
       diag_xray & (enemy_bishops | enemy_queen) & ~king_diag_vision;
@@ -308,8 +311,8 @@ uint64_t Board::compute_pinned_pieces(uint8_t king_sq) {
   uint64_t pinned = 0;
   while (diag_pinners) {
     uint8_t pinner_sq = __builtin_ctzll(diag_pinners);
-    uint64_t pinner_attacks = DIAGONAL_ATTACKS[pinner_sq][_pext_u64(
-        occ, DIAGONALS[pinner_sq])];
+    uint64_t pinner_attacks =
+        DIAGONAL_ATTACKS[pinner_sq][_pext_u64(occ, DIAGONALS[pinner_sq])];
     pinned |= pinner_attacks & diag_blockers;
     diag_pinners &= diag_pinners - 1;
   }

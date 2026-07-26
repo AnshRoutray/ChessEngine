@@ -8,7 +8,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Compiler flags
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -mbmi2")
 set(CMAKE_CXX_FLAGS_RELEASE "-fopenmp -O3 -march=native -mbmi2 -mcmodel=medium -DNDEBUG")
-set(CMAKE_CXX_FLAGS_DEBUG "-g -fopenmp -O0 -mcmodel=medium")
+set(CMAKE_CXX_FLAGS_DEBUG "-g3 -fopenmp -O0 -mcmodel=medium")
 
 # Include directories
 include_directories(
@@ -34,9 +34,9 @@ add_library(chess_engine_lib ${ENGINE_SOURCES})
 add_executable(chess_engine src/Main/main.cpp)
 target_link_libraries(chess_engine chess_engine_lib)
 
-# Development executable — perft, single-search benchmarking, etc.
-add_executable(chess_engine_debug src/Main/debug.cpp)
-target_link_libraries(chess_engine_debug chess_engine_lib)
+# Benchmark executable — perft and single-search timing.
+add_executable(chess_engine_bench src/Main/bench.cpp)
+target_link_libraries(chess_engine_bench chess_engine_lib)
 
 # Enable testing
 enable_testing()

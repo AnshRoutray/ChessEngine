@@ -5,9 +5,10 @@
 #include <algorithm>
 #include <atomic>
 #include <cstdint>
+#include <memory>
 #include <omp.h>
 
-TT_Entry TT_TABLE[TT_SIZE];
+std::unique_ptr<TT_Entry[]> TT_TABLE;
 static std::atomic<bool> stop_worker_thread{false};
 thread_local Move moveList[MAX_DEPTH][MAX_MOVES];
 thread_local std::pair<Move, int16_t> newMoveList[MAX_DEPTH][MAX_MOVES];
@@ -154,6 +155,7 @@ int16_t searchBestMove(Board *board, uint8_t depth, int16_t alpha,
   for (uint16_t move = 0; move < total_moves; ++move) {
     Move current_move = newMoveList[depth][move].first;
     UndoInfo undo_info = board->playMove(current_move);
+    __builtin_prefetch(&TT_TABLE[board->zobrist_hash & (TT_SIZE - 1)]);
     bool reduce = depth >= LMR_MIN_DEPTH && move >= LMR_MOVE_THRESHOLD &&
                   !in_check && undo_info.captured_piece == EMPTY_PIECE &&
                   GET_PROMOTION_PIECE(current_move) == 0;
